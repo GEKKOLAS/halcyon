@@ -72,12 +72,14 @@ Se eligió la opción **A** con un relay propio dentro de la app (sin servicios 
 - [ ] Selector de micro/cámara concretos en escritorio.
 - [ ] Pantalla previa ("lobby") con nombre opcional y prueba de micro antes de entrar.
 
-### Fase 4 — Producción (≈1–2 días)
-- [ ] TURN configurable por variables de entorno (`NEXT_PUBLIC_TURN_URL`, credenciales temporales vía ruta API) — p. ej. Cloudflare Calls TURN, Metered o coturn propio.
-- [ ] Favicon, `opengraph-image.tsx`, `not-found.tsx`, `manifest.webmanifest`.
-- [ ] Accesibilidad: ~~quitar `maximumScale`~~ (hecho), `aria-live` en el estado, foco atrapado en el chat móvil, un único `TooltipProvider`.
-- [ ] Cabeceras de seguridad (`Permissions-Policy`, CSP) en `next.config.js`.
-- [ ] Despliegue en Vercel con HTTPS.
+### Fase 4 — Producción ✅ casi todo hecho
+- [x] TURN configurable por variables de entorno (`NEXT_PUBLIC_TURN_*`, `lib/ice.ts`, `.env.example`).
+- [ ] Credenciales TURN temporales vía ruta API (necesita elegir proveedor).
+- [x] Icono (`app/icon.svg`), imagen Open Graph (`app/opengraph-image.tsx`), `not-found.tsx`, `manifest.webmanifest`; salas con `noindex`.
+- [x] Accesibilidad: zoom permitido, `aria-live` en el estado, un único `TooltipProvider`, barra de controles con `role="toolbar"`.
+- [ ] Foco atrapado en el chat a pantalla completa en móvil.
+- [x] Cabeceras de seguridad: CSP (en producción), `Referrer-Policy: no-referrer`, `Permissions-Policy`, `X-Frame-Options`. Verificado: 0 violaciones de CSP.
+- [ ] Despliegue real con HTTPS (necesita elegir hosting: servidor Node → listo; Vercel → adaptador Redis para el relay).
 
 ### Fase 5 — Calidad y mantenimiento ✅ hecho
 - [x] ESLint (`eslint-config-next`, `npm run lint`) y `npm run typecheck`.
@@ -95,4 +97,4 @@ Se eligió la opción **A** con un relay propio dentro de la app (sin servicios 
 5. CI en verde con e2e de la llamada completa.
 
 ## 5. Orden recomendado
-~~Fase 1~~ → ~~Fase 2~~ → ~~Fase 5~~ → ~~Fase 3~~ → **Fase 4 (producción)**. Decisión pendiente: dónde desplegar (servidor Node → listo; Vercel → hace falta Redis o similar).
+Todas las fases tienen lo esencial hecho. Lo que queda depende de decisiones tuyas: **dónde desplegar** y **qué proveedor TURN** usar. Después: ICE restart, lobby, selector de dispositivos. Decisión pendiente: dónde desplegar (servidor Node → listo; Vercel → hace falta Redis o similar).

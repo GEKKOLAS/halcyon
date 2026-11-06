@@ -56,7 +56,7 @@ Open http://localhost:3000.
 
 Under the hood both tabs join `/api/signal/<room>`, a small relay built into the app. It passes the WebRTC offer, answer and ICE candidates (trickled as they are found) between the two peers, then the media flows **directly** between devices over DTLS-SRTP. The relay never sees video, audio or chat; it only holds handshake messages for a couple of minutes, in memory. Rooms are limited to two people.
 
-STUN servers (Google public) handle NAT traversal. For restrictive networks you'd add a TURN server to `ICE_SERVERS` in `hooks/use-webrtc.ts`.
+STUN servers (Google public) handle NAT traversal. For restrictive networks (symmetric NAT, many mobile carriers and offices) set a TURN server via `NEXT_PUBLIC_TURN_*` (see below and `lib/ice.ts`).
 
 ### Manual fallback (no relay at all)
 
@@ -65,6 +65,16 @@ Under the room link there's *Connect manually with codes*: the host generates an
 ### Hosting the relay
 
 The relay keeps its state in the Node.js process, so it works anywhere a single long-running server runs: `npm start`, Docker, Fly.io, Railway, Render, a VPS. On serverless platforms with many short-lived instances (e.g. Vercel) the two peers may hit different instances; replace `lib/signal-store.ts` with a shared store (e.g. Redis) or plug a different transport into the `SignalingChannel` interface in `lib/signaling.ts` (WebSocket, Supabase Realtime, …).
+
+## Deploy
+
+1. Copy `.env.example` to `.env.local` (or set the variables on your host):
+   - `NEXT_PUBLIC_SITE_URL`: public URL, used for link previews.
+   - `NEXT_PUBLIC_TURN_URLS`, `NEXT_PUBLIC_TURN_USERNAME`, `NEXT_PUBLIC_TURN_CREDENTIAL`: optional TURN relay (e.g. Cloudflare, Metered, or your own coturn). They are baked in at build time and visible to browsers.
+   - `SIGNAL_RATE_LIMIT`: optional, requests per client IP per 10 s on the relay.
+2. `npm ci && npm run build && npm start` behind HTTPS (camera access requires it). Use a single long-running Node process; see *Hosting the relay* above.
+
+Production builds send a Content-Security-Policy, `Referrer-Policy: no-referrer` (room links are invitations), `Permissions-Policy` limited to camera/mic/screen for this origin, and `X-Frame-Options: DENY`. Room pages are `noindex`.
 
 ## Checks
 

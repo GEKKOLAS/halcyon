@@ -6,11 +6,7 @@ import {
   type SignalMessage,
   type SignalingChannel,
 } from "@/lib/signaling";
-
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+import { ICE_SERVERS } from "@/lib/ice";
 
 /** How long a dropped connection may try to recover before the call ends. */
 const RECONNECT_GRACE_MS = 15_000;
