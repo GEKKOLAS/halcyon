@@ -32,6 +32,9 @@ const MESSAGE_TTL_MS = 2 * 60_000;
 /** A peer that hasn't polled for this long is considered gone. */
 const PEER_TTL_MS = 35_000;
 const MAX_MESSAGES_PER_ROOM = 200;
+const MAX_ROOMS = 10_000;
+
+export class RelayBusyError extends Error {}
 
 const g = globalThis as unknown as { __halcyonRooms?: Map<string, Room> };
 const rooms: Map<string, Room> = (g.__halcyonRooms ??= new Map());
@@ -39,6 +42,7 @@ const rooms: Map<string, Room> = (g.__halcyonRooms ??= new Map());
 function getRoom(id: string): Room {
   let room = rooms.get(id);
   if (!room) {
+    if (rooms.size >= MAX_ROOMS) throw new RelayBusyError("too many rooms");
     room = { seq: 0, messages: [], peers: new Map(), waiters: new Set() };
     rooms.set(id, room);
   }

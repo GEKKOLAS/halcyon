@@ -2,7 +2,7 @@
 // Usage: npm run build && npm start   (in another shell)
 //        node scripts/screenshots.mjs [baseUrl] [hostVideo.y4m] [guestVideo.y4m]
 // The optional .y4m files replace Chromium's default fake-camera pattern.
-// Requires Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`).
+// Requires a Chromium for Playwright: `npx playwright install chromium` (once).
 import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import { mkdirSync } from "node:fs";

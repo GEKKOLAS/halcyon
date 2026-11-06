@@ -1,5 +1,7 @@
 # Halcyon
 
+[![CI](https://github.com/gekkolas/halcyon/actions/workflows/ci.yml/badge.svg)](https://github.com/gekkolas/halcyon/actions/workflows/ci.yml)
+
 Calm, private, peer-to-peer video calls. Built with **WebRTC**, **Next.js 14**, **shadcn/ui**, and **Tailwind CSS**. Works on web and mobile from a single responsive client.
 
 <p align="center">
@@ -33,6 +35,7 @@ npm run screenshots
 - **Landing page** (`app/page.tsx`) — fully functional hero with a working "create room / join with code" widget, feature grid, how-it-works, and privacy section.
 - **Video call client** (`components/room-client.tsx`) — responsive call stage. Desktop shows chat as a side panel; mobile uses a picture-in-picture self-view and a full-screen chat sheet.
 - **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, mute/camera toggles, typed errors, reconnect grace period, and a `RTCDataChannel` for chat and call state.
+- **In-call features** — mute and camera state shown to the other side, front/back camera switching, screen sharing (desktop), and a live connection-quality badge (round-trip time and packet loss).
 - **Signaling relay** (`app/api/signal/[room]/route.ts`, `lib/signal-store.ts`, `lib/signaling.ts`) — a tiny long-polling mailbox that passes the handshake between the two peers of a room.
 
 ## Run it
@@ -63,7 +66,11 @@ Under the room link there's *Connect manually with codes*: the host generates an
 
 The relay keeps its state in the Node.js process, so it works anywhere a single long-running server runs: `npm start`, Docker, Fly.io, Railway, Render, a VPS. On serverless platforms with many short-lived instances (e.g. Vercel) the two peers may hit different instances; replace `lib/signal-store.ts` with a shared store (e.g. Redis) or plug a different transport into the `SignalingChannel` interface in `lib/signaling.ts` (WebSocket, Supabase Realtime, …).
 
-## Tests
+## Checks
+
+```bash
+npm run lint && npm run typecheck
+```
 
 ```bash
 npm run build && npm start
@@ -73,7 +80,9 @@ npm run build && npm start
 npm run test:e2e
 ```
 
-Runs full calls between headless Chromium peers (link mode, manual mode, errors, hang-up, room full). Requires Playwright with Chromium.
+Runs full calls between headless Chromium peers: link and manual modes, errors, hang-up, room full, camera switching, screen sharing, network stats and the relay's rate limit. The first time, install the browser with `npx playwright install chromium`. CI (`.github/workflows/ci.yml`) runs all of the above on every pull request.
+
+The relay allows 300 requests per 10 s per client IP by default; change it with `SIGNAL_RATE_LIMIT`.
 
 ## Stack notes
 

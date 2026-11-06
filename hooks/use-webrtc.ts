@@ -35,6 +35,7 @@ export type RtcErrorCode =
   | "ice-failed"
   | "room-full"
   | "signaling-failed"
+  | "screen-failed"
   | "unknown";
 
 export interface RtcError {
@@ -44,6 +45,25 @@ export interface RtcError {
 
 /** Why a call that was connected has ended. */
 export type EndReason = "local" | "peer" | "network";
+
+export type NetLevel = "good" | "fair" | "poor" | "unknown";
+
+export interface NetStats {
+  level: NetLevel;
+  /** Round-trip time of the active candidate pair, in ms. */
+  rttMs: number | null;
+  /** Fraction of incoming packets lost over the last sample (0–1). */
+  loss: number;
+}
+
+const STATS_INTERVAL_MS = 2000;
+
+function netLevel(rttMs: number | null, loss: number): NetLevel {
+  if (rttMs === null) return "unknown";
+  if (rttMs < 150 && loss < 0.02) return "good";
+  if (rttMs < 400 && loss < 0.08) return "fair";
+  return "poor";
+}
 
 export interface ChatMessage {
   id: string;
@@ -55,7 +75,7 @@ export interface ChatMessage {
 /** Messages exchanged over the data channel. */
 type WireMessage =
   | { type: "chat"; text: string }
-  | { type: "state"; mic: boolean; cam: boolean }
+  | { type: "state"; mic: boolean; cam: boolean; screen?: boolean }
   | { type: "bye" };
 
 const ERROR_MESSAGES: Record<RtcErrorCode, string> = {
@@ -78,6 +98,7 @@ const ERROR_MESSAGES: Record<RtcErrorCode, string> = {
   "room-full": "This room already has two people in it. Start a new room instead.",
   "signaling-failed":
     "Couldn't reach the connection service. Check your internet, or connect manually with codes.",
+  "screen-failed": "Couldn't start screen sharing.",
   unknown: "Something went wrong. Please try again.",
 };
 
@@ -140,6 +161,7 @@ export function useWebRTC() {
   const wasConnected = useRef(false);
   const micRef = useRef(true);
   const camRef = useRef(true);
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -150,6 +172,16 @@ export function useWebRTC() {
   const [camOn, setCamOn] = useState(true);
   const [remoteMicOn, setRemoteMicOn] = useState(true);
   const [remoteCamOn, setRemoteCamOn] = useState(true);
+  const [remoteSharing, setRemoteSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [facing, setFacing] = useState<"user" | "environment">("user");
+  const [cameraCount, setCameraCount] = useState(0);
+  const [netStats, setNetStats] = useState<NetStats | null>(null);
+  // Detected after mount so server and client render the same markup.
+  const [canShareScreen, setCanShareScreen] = useState(false);
+  useEffect(() => {
+    setCanShareScreen(typeof navigator.mediaDevices?.getDisplayMedia === "function");
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const pushMessage = useCallback((text: string, mine: boolean) => {
@@ -167,6 +199,17 @@ export function useWebRTC() {
     }
     return false;
   }, []);
+
+  const sendState = useCallback(
+    () =>
+      sendWire({
+        type: "state",
+        mic: micRef.current,
+        cam: camRef.current,
+        screen: !!screenTrackRef.current,
+      }),
+    [sendWire]
+  );
 
   const clearReconnectTimer = () => {
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
@@ -188,6 +231,12 @@ export function useWebRTC() {
     sigRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
+    if (screenTrackRef.current) {
+      screenTrackRef.current.onended = null;
+      screenTrackRef.current.stop();
+      screenTrackRef.current = null;
+    }
+    setScreenStream(null);
     pcRef.current = null;
     dcRef.current = null;
     setLocalStream(null);
@@ -199,8 +248,6 @@ export function useWebRTC() {
   const wireDataChannel = useCallback(
     (dc: RTCDataChannel) => {
       dcRef.current = dc;
-      const sendState = () =>
-        sendWire({ type: "state", mic: micRef.current, cam: camRef.current });
       // The answerer's channel usually arrives already open.
       if (dc.readyState === "open") sendState();
       else dc.onopen = sendState;
@@ -217,6 +264,7 @@ export function useWebRTC() {
         else if (msg.type === "state") {
           setRemoteMicOn(msg.mic);
           setRemoteCamOn(msg.cam);
+          setRemoteSharing(!!msg.screen);
         } else if (msg.type === "bye") teardown("peer");
       };
       // The channel closes when the other tab goes away without a "bye".
@@ -224,7 +272,7 @@ export function useWebRTC() {
         if (wasConnected.current && pcRef.current) teardown("peer");
       };
     },
-    [pushMessage, sendWire, teardown]
+    [pushMessage, sendState, teardown]
   );
 
   const createPeer = useCallback(() => {
@@ -288,6 +336,12 @@ export function useWebRTC() {
     stream.getVideoTracks().forEach((t) => (t.enabled = camRef.current));
     localStreamRef.current = stream;
     setLocalStream(stream);
+    const settings = stream.getVideoTracks()[0]?.getSettings();
+    setFacing(settings?.facingMode === "environment" ? "environment" : "user");
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((d) => setCameraCount(d.filter((x) => x.kind === "videoinput").length))
+      .catch(() => {});
     return stream;
   }, []);
 
@@ -515,8 +569,8 @@ export function useWebRTC() {
       ?.getAudioTracks()
       .forEach((t) => (t.enabled = micRef.current));
     setMicOn(micRef.current);
-    sendWire({ type: "state", mic: micRef.current, cam: camRef.current });
-  }, [sendWire]);
+    sendState();
+  }, [sendState]);
 
   const toggleCam = useCallback(() => {
     camRef.current = !camRef.current;
@@ -524,8 +578,135 @@ export function useWebRTC() {
       ?.getVideoTracks()
       .forEach((t) => (t.enabled = camRef.current));
     setCamOn(camRef.current);
-    sendWire({ type: "state", mic: micRef.current, cam: camRef.current });
-  }, [sendWire]);
+    sendState();
+  }, [sendState]);
+
+  const videoSender = () =>
+    pcRef.current?.getSenders().find((s) => s.track?.kind === "video") ?? null;
+
+  /** Cycle to the next camera (front ↔ back on phones). */
+  const switchCamera = useCallback(async () => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const old = stream.getVideoTracks()[0];
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(
+      (d) => d.kind === "videoinput"
+    );
+    setCameraCount(cams.length);
+    if (cams.length < 2) return;
+    const currentId = old?.getSettings().deviceId;
+    const next = cams[(cams.findIndex((c) => c.deviceId === currentId) + 1) % cams.length];
+
+    const open = (deviceId: string) =>
+      navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+    // Many phones can't open two cameras at once, so release the current one first.
+    old?.stop();
+    let track: MediaStreamTrack;
+    try {
+      track = (await open(next.deviceId)).getVideoTracks()[0];
+    } catch (err) {
+      setError(mediaError(err));
+      if (!currentId) return;
+      try {
+        track = (await open(currentId)).getVideoTracks()[0];
+      } catch {
+        return;
+      }
+    }
+    track.enabled = camRef.current;
+    const fresh = new MediaStream([
+      ...stream.getAudioTracks(),
+      track,
+    ]);
+    localStreamRef.current = fresh;
+    setLocalStream(fresh);
+    const mode = track.getSettings().facingMode;
+    setFacing(mode === "environment" ? "environment" : "user");
+    if (!screenTrackRef.current) await videoSender()?.replaceTrack(track);
+  }, []);
+
+  const stopScreenShare = useCallback(() => {
+    const t = screenTrackRef.current;
+    if (!t) return;
+    screenTrackRef.current = null;
+    t.onended = null;
+    t.stop();
+    const cam = localStreamRef.current?.getVideoTracks()[0] ?? null;
+    videoSender()?.replaceTrack(cam).catch(() => {});
+    setScreenStream(null);
+    sendState();
+  }, [sendState]);
+
+  /** Share a screen/window/tab in place of the camera. */
+  const toggleScreenShare = useCallback(async () => {
+    if (screenTrackRef.current) return stopScreenShare();
+    let display: MediaStream;
+    try {
+      display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    } catch (err) {
+      // Closing the picker is not an error worth showing.
+      if (!(err instanceof DOMException && err.name === "NotAllowedError")) {
+        setError(rtcError("screen-failed"));
+      }
+      return;
+    }
+    const track = display.getVideoTracks()[0];
+    if (!track) return;
+    track.contentHint = "detail";
+    track.onended = stopScreenShare; // the browser's own "Stop sharing" button
+    screenTrackRef.current = track;
+    try {
+      await videoSender()?.replaceTrack(track);
+    } catch {
+      stopScreenShare();
+      setError(rtcError("screen-failed"));
+      return;
+    }
+    setScreenStream(new MediaStream([track]));
+    sendState();
+  }, [sendState, stopScreenShare]);
+
+  // Sample connection quality while connected.
+  useEffect(() => {
+    if (connState !== "connected") {
+      setNetStats(null);
+      return;
+    }
+    let prevLost = 0;
+    let prevRecv = 0;
+    const timer = setInterval(async () => {
+      const pc = pcRef.current;
+      if (!pc) return;
+      const report = await pc.getStats().catch(() => null);
+      if (!report) return;
+      let pairId: string | undefined;
+      let rtt: number | null = null;
+      let lost = 0;
+      let recv = 0;
+      report.forEach((st) => {
+        if (st.type === "transport" && st.selectedCandidatePairId) pairId = st.selectedCandidatePairId;
+        if (st.type === "inbound-rtp") {
+          lost += Math.max(0, st.packetsLost ?? 0);
+          recv += st.packetsReceived ?? 0;
+        }
+      });
+      report.forEach((st) => {
+        if (st.type !== "candidate-pair" || typeof st.currentRoundTripTime !== "number") return;
+        if (pairId ? st.id === pairId : st.nominated && st.state === "succeeded") {
+          rtt = Math.round(st.currentRoundTripTime * 1000);
+        }
+      });
+      const dLost = lost - prevLost;
+      const dRecv = recv - prevRecv;
+      prevLost = lost;
+      prevRecv = recv;
+      const loss = dLost + dRecv > 0 ? Math.max(0, dLost) / (dLost + dRecv) : 0;
+      setNetStats({ level: netLevel(rtt, loss), rttMs: rtt, loss });
+    }, STATS_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [connState]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -554,6 +735,13 @@ export function useWebRTC() {
     camOn,
     remoteMicOn,
     remoteCamOn,
+    remoteSharing,
+    screenStream,
+    sharing: !!screenStream,
+    localMirror: !screenStream && facing === "user",
+    canSwitchCamera: cameraCount > 1,
+    canShareScreen,
+    netStats,
     messages,
     initMedia,
     createOffer,
@@ -564,6 +752,8 @@ export function useWebRTC() {
     sendMessage,
     toggleMic,
     toggleCam,
+    switchCamera,
+    toggleScreenShare,
     clearError,
     hangUp,
   };

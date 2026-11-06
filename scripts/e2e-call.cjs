@@ -1,7 +1,7 @@
 // End-to-end check of full calls between headless Chromium peers.
 // Usage: npm run build && npm start   (in another shell)
 //        npm run test:e2e [-- baseUrl]
-// Requires Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`).
+// Requires a Chromium for Playwright: `npx playwright install chromium` (once).
 const { chromium } = require("playwright");
 
 const B = process.argv[2] ?? "http://localhost:3000";
@@ -111,6 +111,64 @@ async function manualConnect(h, g, offer) {
     ok((await connected(g)) && (await connected(h)), "link: both join at the same time → connected");
     await h.context().close();
     await g.context().close();
+  }
+
+  // --- In-call features (two fake cameras) ------------------------------------
+  {
+    const b3 = await chromium.launch({
+      args: [
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream=device-count=2",
+        "--auto-select-desktop-capture-source=Entire screen",
+      ],
+    });
+    const id = room();
+    const h = await newPage(b3);
+    const g = await newPage(b3);
+    await h.goto(`${B}/room/${id}?host=1`);
+    await g.goto(`${B}/room/${id}`);
+    await connected(h);
+    await connected(g);
+
+    ok(await seen(g.getByText(/(\d+|<1) ms · /)), "network badge shows round-trip time");
+
+    const camId = () =>
+      h.evaluate(() => {
+        // The self-view is the muted <video>; the first one in a call is the remote.
+        const self = [...document.querySelectorAll("video")].find((v) => v.muted);
+        return self?.srcObject?.getVideoTracks()[0]?.getSettings().deviceId;
+      });
+    const before = await camId();
+    await h.getByRole("button", { name: "Switch camera" }).click();
+    await h.waitForTimeout(1000);
+    const after = await camId();
+    ok(before && after && before !== after, "switch camera changes the capture device");
+    // Ignore Next.js's own (empty) route announcer.
+    const alerts = await h.locator("[role=alert]:not(#__next-route-announcer__)").count();
+    ok(alerts === 0, "no error after switching camera");
+
+    await h.getByRole("button", { name: "Share screen" }).click();
+    ok(await seen(h.getByText("You · screen")), "host sees own screen in self-view");
+    ok(
+      await g
+        .waitForFunction(() => [...document.querySelectorAll("video")].some((v) => v.classList.contains("object-contain")), null, { timeout: 8000 })
+        .then(() => true, () => false),
+      "guest shows the shared screen uncropped"
+    );
+    await h.getByRole("button", { name: "Stop sharing screen" }).click();
+    ok(await seen(h.getByRole("button", { name: "Share screen" })), "screen share can be stopped");
+    await b3.close();
+  }
+
+  // --- Relay limits -------------------------------------------------------------
+  {
+    const headers = { "x-forwarded-for": "203.0.113.9" };
+    const codes = await Promise.all(
+      Array.from({ length: 320 }, (_, i) =>
+        fetch(`${B}/api/signal/flood?peer=p${i % 2}`, { headers }).then((r) => r.status)
+      )
+    );
+    ok(codes.includes(429), "relay rate-limits a flood from one client");
   }
 
   // --- Media ----------------------------------------------------------------

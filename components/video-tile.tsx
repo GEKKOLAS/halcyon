@@ -12,6 +12,8 @@ interface VideoTileProps {
   audioOff?: boolean;
   videoOff?: boolean;
   className?: string;
+  /** "contain" for screen shares, so nothing gets cropped. */
+  fit?: "cover" | "contain";
   children?: React.ReactNode;
 }
 
@@ -23,6 +25,7 @@ export function VideoTile({
   audioOff,
   videoOff,
   className,
+  fit = "cover",
   children,
 }: VideoTileProps) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -50,7 +53,8 @@ export function VideoTile({
         muted={muted}
         aria-hidden={!showVideo}
         className={cn(
-          "h-full w-full object-cover",
+          "h-full w-full",
+          fit === "contain" ? "object-contain" : "object-cover",
           mirror && "-scale-x-100",
           !showVideo && "invisible"
         )}

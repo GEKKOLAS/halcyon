@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { allow, clientKey } from "@/lib/rate-limit";
 import {
+  RelayBusyError,
   SIGNAL_TYPES,
   cursor,
   poll,
@@ -19,12 +21,27 @@ const POLL_TIMEOUT_MS = 20_000;
 const bad = (msg: string, status = 400) =>
   NextResponse.json({ error: msg }, { status, headers: { "Cache-Control": "no-store" } });
 
+type Handler = (req: NextRequest, ctx: { params: { room: string } }) => Promise<Response>;
+
+/** Rate-limit per client IP and map store overload to 503. */
+const guarded =
+  (fn: Handler): Handler =>
+  async (req, ctx) => {
+    if (!allow(clientKey(req.headers, req.ip))) return bad("slow down", 429);
+    try {
+      return await fn(req, ctx);
+    } catch (err) {
+      if (err instanceof RelayBusyError) return bad("relay busy", 503);
+      throw err;
+    }
+  };
+
 /**
  * Long-poll for handshake messages.
  * GET /api/signal/:room?peer=<id>           → join; returns the current cursor
  * GET /api/signal/:room?peer=<id>&since=<n> → messages from others after n
  */
-export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
+export const GET = guarded(async (req, { params }) => {
   const room = params.room;
   const peer = req.nextUrl.searchParams.get("peer") ?? "";
   const sinceRaw = req.nextUrl.searchParams.get("since");
@@ -42,10 +59,10 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
 
   const result = await poll(room, peer, since, POLL_TIMEOUT_MS, req.signal);
   return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
-}
+});
 
 /** POST /api/signal/:room  { peer, type, data? } */
-export async function POST(req: NextRequest, { params }: { params: { room: string } }) {
+export const POST = guarded(async (req, { params }) => {
   const room = params.room;
   if (!ID_RE.test(room)) return bad("invalid room");
 
@@ -75,4 +92,4 @@ export async function POST(req: NextRequest, { params }: { params: { room: strin
 
   publish(room, peer, type as SignalType, data);
   return new NextResponse(null, { status: 204 });
-}
+});

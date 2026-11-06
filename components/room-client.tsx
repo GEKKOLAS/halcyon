@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Check, Copy, Loader2, PhoneOff, RotateCcw, WifiOff } from "lucide-react";
+import { AlertCircle, Check, Copy, Loader2, PhoneOff, RotateCcw, WifiOff, X } from "lucide-react";
 import { useWebRTC, type EndReason, type RtcErrorCode } from "@/hooks/use-webrtc";
 import { AuroraBackground } from "@/components/aurora-background";
 import { Logo, PresenceOrb } from "@/components/logo";
@@ -13,6 +13,7 @@ import { LinkPanel } from "@/components/link-panel";
 import { httpSignaling } from "@/lib/signaling";
 import { ControlBar } from "@/components/control-bar";
 import { ChatPanel } from "@/components/chat-panel";
+import { NetworkBadge } from "@/components/network-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -244,9 +245,27 @@ export function RoomClient({ roomId }: { roomId: string }) {
                 stream={rtc.remoteStream}
                 label={remoteLabel}
                 audioOff={!rtc.remoteMicOn}
-                videoOff={!rtc.remoteCamOn}
+                videoOff={!rtc.remoteCamOn && !rtc.remoteSharing}
+                fit={rtc.remoteSharing ? "contain" : "cover"}
                 className="h-full w-full"
               >
+                <NetworkBadge stats={rtc.netStats} className="absolute left-3 top-3" />
+                {error && (
+                  <div
+                    role="alert"
+                    className="absolute left-1/2 top-3 z-10 flex max-w-[calc(100%-7rem)] -translate-x-1/2 items-center gap-2 rounded-full glass-strong px-4 py-2 text-sm"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                    <span className="truncate">{error.message}</span>
+                    <button
+                      onClick={rtc.clearError}
+                      aria-label="Dismiss"
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full hover:bg-secondary"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
                 {reconnecting && (
                   <div
                     className="absolute inset-0 grid place-items-center bg-background/60 backdrop-blur-sm"
@@ -262,12 +281,13 @@ export function RoomClient({ roomId }: { roomId: string }) {
               {/* Local PiP */}
               <div className="absolute bottom-4 right-4 aspect-[3/4] w-28 sm:w-44 md:w-52">
                 <VideoTile
-                  stream={rtc.localStream}
-                  label="You"
+                  stream={rtc.screenStream ?? rtc.localStream}
+                  label={rtc.sharing ? "You · screen" : "You"}
                   muted
-                  mirror
+                  mirror={rtc.localMirror}
                   audioOff={!rtc.micOn}
-                  videoOff={!rtc.camOn}
+                  videoOff={!rtc.sharing && !rtc.camOn}
+                  fit={rtc.sharing ? "contain" : "cover"}
                   className="h-full w-full ring-2 ring-primary/40"
                 />
               </div>
@@ -280,7 +300,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
                   stream={rtc.localStream}
                   label="You"
                   muted
-                  mirror
+                  mirror={rtc.localMirror}
                   audioOff={!rtc.micOn}
                   videoOff={!rtc.camOn}
                   className="h-full w-full"
@@ -355,6 +375,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
             onHangUp={leave}
             onToggleChat={openChat}
             unread={unread}
+            onSwitchCamera={rtc.canSwitchCamera ? rtc.switchCamera : undefined}
+            onToggleScreen={rtc.canShareScreen && connected ? rtc.toggleScreenShare : undefined}
+            sharing={rtc.sharing}
           />
         </div>
       )}

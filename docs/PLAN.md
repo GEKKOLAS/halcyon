@@ -61,13 +61,15 @@ Se eligió la opción **A** con un relay propio dentro de la app (sin servicios 
 **Pendiente de esta fase:**
 - [ ] Hosting serverless (Vercel): el store en memoria no se comparte entre instancias → adaptador Redis/Upstash o un transporte WebSocket (requiere cuenta/claves).
 - [ ] Usar el canal para `restartIce()` cuando la conexión cae (hoy sólo se espera 15 s).
-- [ ] Límite de peticiones por IP en la ruta de señalización.
+- [x] Límite de peticiones por IP en la ruta de señalización (300 / 10 s, `SIGNAL_RATE_LIMIT`) y tope de 10 000 salas en memoria.
 
-### Fase 3 — Funciones de llamada (≈2 días)
-- [ ] Cambiar cámara (frontal/trasera) con `replaceTrack` en el `RTCRtpSender`; selector de micro/cámara en desktop.
+### Fase 3 — Funciones de llamada ✅ casi todo hecho
+- [x] Cambiar cámara (frontal/trasera) con `replaceTrack`; el botón sólo aparece si hay 2+ cámaras. El espejo sólo se aplica a la cámara frontal.
 - [x] Señalizar mute/cámara remotos por el data channel y mostrar los iconos en el tile remoto.
-- [ ] Indicador de calidad de red (`getStats`: RTT, pérdida de paquetes).
-- [ ] (Opcional) Compartir pantalla con `getDisplayMedia` + `replaceTrack`.
+- [x] Indicador de calidad de red (`getStats`: RTT del par activo y pérdida de paquetes) en el tile remoto.
+- [x] Compartir pantalla (`getDisplayMedia` + `replaceTrack`, sólo escritorio); el otro lado lo ve sin recortar.
+- [x] Avisos de error durante la llamada (pantalla, cámara).
+- [ ] Selector de micro/cámara concretos en escritorio.
 - [ ] Pantalla previa ("lobby") con nombre opcional y prueba de micro antes de entrar.
 
 ### Fase 4 — Producción (≈1–2 días)
@@ -77,11 +79,13 @@ Se eligió la opción **A** con un relay propio dentro de la app (sin servicios 
 - [ ] Cabeceras de seguridad (`Permissions-Policy`, CSP) en `next.config.js`.
 - [ ] Despliegue en Vercel con HTTPS.
 
-### Fase 5 — Calidad y mantenimiento (en paralelo)
-- [ ] ESLint (`eslint-config-next`) y Prettier.
-- [ ] Tests unitarios del hook (Vitest) y **e2e con Playwright** reutilizando la lógica de `scripts/screenshots.mjs` (dos navegadores con cámara falsa → conectar → chatear → colgar).
-- [ ] GitHub Actions: `lint` + `tsc` + `build` + e2e en cada PR.
-- [ ] Regenerar capturas automáticamente (`npm run screenshots`).
+### Fase 5 — Calidad y mantenimiento ✅ hecho
+- [x] ESLint (`eslint-config-next`, `npm run lint`) y `npm run typecheck`.
+- [x] **e2e con Playwright** (`npm run test:e2e`, 30 comprobaciones): modo enlace, modo manual, errores, colgar, sala llena, cambio de cámara, pantalla compartida, calidad de red, límite de peticiones.
+- [x] GitHub Actions (`.github/workflows/ci.yml`): lint + typecheck + build + e2e en cada PR y en `main`.
+- [x] Capturas reproducibles (`npm run screenshots`).
+- [ ] Prettier (opcional).
+- [ ] Tests unitarios del hook (Vitest) — el e2e ya cubre los flujos principales.
 
 ## 4. Criterios de "terminado"
 1. Dos personas en redes distintas se conectan **sólo compartiendo el enlace** de la sala.
@@ -91,4 +95,4 @@ Se eligió la opción **A** con un relay propio dentro de la app (sin servicios 
 5. CI en verde con e2e de la llamada completa.
 
 ## 5. Orden recomendado
-~~Fase 1~~ → ~~Fase 2~~ → Fase 5 (lint + CI; el e2e ya existe) → Fase 3 → Fase 4. Decisión pendiente: dónde desplegar (servidor Node → listo; Vercel → hace falta Redis o similar).
+~~Fase 1~~ → ~~Fase 2~~ → ~~Fase 5~~ → ~~Fase 3~~ → **Fase 4 (producción)**. Decisión pendiente: dónde desplegar (servidor Node → listo; Vercel → hace falta Redis o similar).
