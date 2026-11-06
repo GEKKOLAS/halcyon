@@ -61,6 +61,12 @@ function netLevel(rttMs: number | null, loss: number): NetLevel {
   return "poor";
 }
 
+export interface Reaction {
+  id: string;
+  emoji: string;
+  mine: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   text: string;
@@ -179,6 +185,17 @@ export function useWebRTC() {
     setCanShareScreen(typeof navigator.mediaDevices?.getDisplayMedia === "function");
   }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
+
+  const pushReaction = useCallback((emoji: string, mine: boolean) => {
+    const id = Math.random().toString(36).slice(2);
+    setReactions((prev) => [...prev, { id, emoji, mine }]);
+    setTimeout(
+      () => setReactions((prev) => prev.filter((r) => r.id !== id)),
+      2600
+    );
+  }, []);
 
   const pushMessage = useCallback((text: string, mine: boolean) => {
     setMessages((prev) => [
@@ -244,31 +261,17 @@ export function useWebRTC() {
   const wireDataChannel = useCallback(
     (dc: RTCDataChannel) => {
       dcRef.current = dc;
-      // The answerer's channel usually arrives already open.
-      if (dc.readyState === "open") sendState();
-      else dc.onopen = sendState;
       dc.onmessage = (e) => {
-        let msg: WireMessage;
+        // Structured payloads; fall back to plain text for older peers.
         try {
-          msg = JSON.parse(e.data);
-        } catch {
-          // Plain-text message from an older client.
-          pushMessage(String(e.data), false);
-          return;
-        }
-        if (msg.type === "chat") pushMessage(msg.text, false);
-        else if (msg.type === "state") {
-          setRemoteMicOn(msg.mic);
-          setRemoteCamOn(msg.cam);
-          setRemoteSharing(!!msg.screen);
-        } else if (msg.type === "bye") teardown("peer");
-      };
-      // The channel closes when the other tab goes away without a "bye".
-      dc.onclose = () => {
-        if (wasConnected.current && pcRef.current) teardown("peer");
+          const msg = JSON.parse(e.data);
+          if (msg?.type === "reaction") return pushReaction(msg.emoji, false);
+          if (msg?.type === "chat") return pushMessage(msg.text, false);
+        } catch {}
+        pushMessage(String(e.data), false);
       };
     },
-    [pushMessage, sendState, teardown]
+    [pushMessage, pushReaction]
   );
 
   const createPeer = useCallback(() => {
@@ -281,33 +284,13 @@ export function useWebRTC() {
     pc.ontrack = (e) => setRemoteStream(e.streams[0] ?? new MediaStream([e.track]));
     pc.ondatachannel = (e) => wireDataChannel(e.channel);
     pc.onconnectionstatechange = () => {
-      switch (pc.connectionState) {
-        case "connected":
-          clearReconnectTimer();
-          wasConnected.current = true;
-          setError(null);
-          setConnState("connected");
-          break;
-        case "disconnected":
-          // Often transient (network switch, brief loss). Give it a chance.
-          setConnState("reconnecting");
-          clearReconnectTimer();
-          reconnectTimer.current = setTimeout(
-            () => teardown("network"),
-            RECONNECT_GRACE_MS
-          );
-          break;
-        case "failed":
-          if (wasConnected.current) teardown("network");
-          else {
-            setConnState("failed");
-            setError(rtcError("ice-failed"));
-          }
-          break;
-        case "closed":
-          teardown(null);
-          break;
+      const s = pc.connectionState;
+      if (s === "connected") {
+        setConnState("connected");
+        setConnectedAt((t) => t ?? Date.now());
       }
+      else if (s === "failed") setConnState("failed");
+      else if (s === "disconnected" || s === "closed") setConnState("closed");
     };
     pcRef.current = pc;
     return pc;
@@ -554,10 +537,30 @@ export function useWebRTC() {
 
   const sendMessage = useCallback(
     (text: string) => {
-      if (sendWire({ type: "chat", text })) pushMessage(text, true);
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "chat", text }));
+        pushMessage(text, true);
+      }
     },
     [pushMessage, sendWire]
   );
+
+  const sendReaction = useCallback(
+    (emoji: string) => {
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "reaction", emoji }));
+      }
+      pushReaction(emoji, true);
+    },
+    [pushReaction]
+  );
+  const acceptAnswer = useCallback(async (answerCode: string) => {
+    const pc = pcRef.current;
+    if (!pc) throw new Error("No active connection");
+    await pc.setRemoteDescription(decode(answerCode));
+  }, []);
 
   const toggleMic = useCallback(() => {
     micRef.current = !micRef.current;
@@ -739,6 +742,8 @@ export function useWebRTC() {
     canShareScreen,
     netStats,
     messages,
+    reactions,
+    connectedAt,
     initMedia,
     createOffer,
     acceptOffer,
@@ -746,6 +751,7 @@ export function useWebRTC() {
     connectVia,
     disconnectSignaling,
     sendMessage,
+    sendReaction,
     toggleMic,
     toggleCam,
     switchCamera,

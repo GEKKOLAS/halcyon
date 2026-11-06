@@ -34,9 +34,9 @@ npm run screenshots
 
 - **Landing page** (`app/page.tsx`) — fully functional hero with a working "create room / join with code" widget, feature grid, how-it-works, and privacy section.
 - **Video call client** (`components/room-client.tsx`) — responsive call stage. Desktop shows chat as a side panel; mobile uses a picture-in-picture self-view and a full-screen chat sheet.
-- **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, mute/camera toggles, typed errors, reconnect grace period, and a `RTCDataChannel` for chat and call state.
-- **In-call features** — mute and camera state shown to the other side, front/back camera switching, screen sharing (desktop), and a live connection-quality badge (round-trip time and packet loss).
-- **Signaling relay** (`app/api/signal/[room]/route.ts`, `lib/signal-store.ts`, `lib/signaling.ts`) — a tiny long-polling mailbox that passes the handshake between the two peers of a room.
+- **Interactive UI** — floating navbar with active-section pill, 3D-tilt live call preview, spotlight bento cards, auto-playing how-it-works stepper, segmented room-code input (accepts pasted links).
+- **In-call UX** — draggable picture-in-picture (double-click to swap), speaking indicators from live audio levels, emoji reactions over the data channel, call timer, auto-hiding controls, full screen, and keyboard shortcuts (`M` mute · `V` camera · `C` chat · `F` full screen · `1–6` react).
+- **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, mute/camera toggles, and a `RTCDataChannel` text chat. No backend required.
 
 ## Run it
 
@@ -97,6 +97,7 @@ The relay allows 300 requests per 10 s per client IP by default; change it with 
 ## Stack notes
 
 - shadcn-style primitives live in `components/ui` (Button, Input, Tooltip).
+- Animations use **framer-motion**; scroll reveals and spotlight hover helpers are in `components/motion.tsx`.
 - Design tokens (aurora palette, glass surfaces, motion) are in `tailwind.config.ts` + `app/globals.css`.
 - No media or chat is recorded or stored. Closing the tab tears down the connection and frees the room seat.
 
