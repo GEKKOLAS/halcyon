@@ -12,6 +12,8 @@ import { VideoTile } from "@/components/video-tile";
 import { SignalPanel } from "@/components/signal-panel";
 import { ControlBar, REACTIONS } from "@/components/control-bar";
 import { ChatPanel } from "@/components/chat-panel";
+import { NetworkBadge } from "@/components/network-badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function useCallTimer(since: number | null) {
@@ -33,10 +35,15 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const isHost = params.get("host") === "1";
+  const remoteLabel = isHost ? "Guest" : "Host";
 
   const rtc = useWebRTC();
   const [offerCode, setOfferCode] = useState("");
   const [answerCode, setAnswerCode] = useState("");
+  const [mode, setMode] = useState<"link" | "manual">("link");
+  const [roomUrl, setRoomUrl] = useState(`/room/${roomId}`);
+  const [busy, setBusy] = useState(false);
+  const [answerApplied, setAnswerApplied] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -57,11 +64,25 @@ export function RoomClient({ roomId }: { roomId: string }) {
     setTimeout(() => setToast((t) => (t === msg ? null : t)), 1800);
   }, []);
 
-  // Pre-warm camera so the local preview shows immediately
+  // Start the camera and join the room's handshake channel right away.
   useEffect(() => {
     rtc.initMedia().catch(() => setMediaError(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const useManual = () => {
+    rtc.disconnectSignaling();
+    rtc.clearError();
+    setMode("manual");
+    rtc.initMedia();
+  };
+  const useLink = () => {
+    setOfferCode("");
+    setAnswerCode("");
+    setAnswerApplied(false);
+    setMode("link");
+    startLink();
+  };
 
   // Track unread chat
   useEffect(() => {

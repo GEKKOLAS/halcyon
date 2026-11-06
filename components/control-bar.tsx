@@ -36,7 +36,14 @@ interface ControlBarProps {
   onToggleFullscreen: () => void;
   onReact: (emoji: string) => void;
   unread: number;
+  /** Shown only when the device has more than one camera. */
+  onSwitchCamera?: () => void;
+  /** Shown only when the browser supports screen capture and a call is live. */
+  onToggleScreen?: () => void;
+  sharing?: boolean;
 }
+
+type Tone = "neutral" | "off" | "on" | "danger";
 
 function CtrlButton({
   tone = "neutral",
@@ -99,6 +106,9 @@ export function ControlBar({
   onToggleFullscreen,
   onReact,
   unread,
+  onSwitchCamera,
+  onToggleScreen,
+  sharing,
 }: ControlBarProps) {
   const [trayOpen, setTrayOpen] = useState(false);
 

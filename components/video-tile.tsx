@@ -15,6 +15,9 @@ interface VideoTileProps {
   videoOff?: boolean;
   compact?: boolean;
   className?: string;
+  /** "contain" for screen shares, so nothing gets cropped. */
+  fit?: "cover" | "contain";
+  children?: React.ReactNode;
 }
 
 export function VideoTile({
@@ -26,14 +29,20 @@ export function VideoTile({
   videoOff,
   compact,
   className,
+  fit = "cover",
+  children,
 }: VideoTileProps) {
   const ref = useRef<HTMLVideoElement>(null);
   const level = useAudioLevel(stream, !audioOff);
   const speaking = level > 0.08;
 
+  // The <video> element stays mounted for the tile's lifetime, so the stream
+  // only needs to be attached when it changes (not when the camera toggles).
   useEffect(() => {
     if (ref.current && stream) ref.current.srcObject = stream;
   }, [stream, videoOff]);
+
+  const showVideo = !!stream && !videoOff;
 
   return (
     <div

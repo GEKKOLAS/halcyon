@@ -11,9 +11,13 @@ function CopyField({ value }: { value: string }) {
   const canShare = typeof navigator !== "undefined" && "share" in navigator;
 
   const copy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard can be blocked; the textarea is still selectable.
+    }
   };
   const share = () => navigator.share?.({ text: value }).catch(() => {});
 
@@ -23,6 +27,7 @@ function CopyField({ value }: { value: string }) {
         <textarea
           readOnly
           value={value}
+          aria-label={label}
           onClick={(e) => e.currentTarget.select()}
           className="no-scrollbar h-20 w-full resize-none rounded-2xl border border-input bg-black/20 p-3 font-mono text-[11px] leading-snug text-muted-foreground focus-visible:outline-none"
         />
@@ -126,6 +131,46 @@ function PasteField({
   );
 }
 
+export function ErrorNotice({
+  error,
+  onRetry,
+  retryLabel,
+}: {
+  error: RtcError;
+  onRetry?: () => void;
+  retryLabel?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-sm"
+    >
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+      <div className="flex-1">
+        <p>{error.message}</p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {retryLabel ?? "Try again"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function Waiting({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+      {children}
+    </p>
+  );
+}
+
 interface SignalPanelProps {
   role: "host" | "guest";
   offerCode: string;
@@ -134,6 +179,11 @@ interface SignalPanelProps {
   onAcceptOffer: (code: string) => Promise<void> | void;
   onAcceptAnswer: (code: string) => Promise<void> | void;
   connecting: boolean;
+  error: RtcError | null;
+  onRetry?: () => void;
+  retryLabel?: string;
+  onClearError: () => void;
+  footer?: React.ReactNode;
 }
 
 function Stepper({ labels, current }: { labels: string[]; current: number }) {
@@ -196,7 +246,13 @@ export function SignalPanel({
   onGenerateOffer,
   onAcceptOffer,
   onAcceptAnswer,
+  busy,
   connecting,
+  error,
+  onRetry,
+  retryLabel,
+  onClearError,
+  footer,
 }: SignalPanelProps) {
   const [busy, setBusy] = useState(false);
   const [answered, setAnswered] = useState(false);
@@ -305,6 +361,7 @@ export function SignalPanel({
           </AnimatePresence>
         </div>
       )}
+      {footer}
     </div>
   );
 }

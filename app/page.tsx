@@ -106,7 +106,7 @@ export default function Home() {
           <div className="animate-fade-up">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs text-muted-foreground">
               <PresenceOrb />
-              Peer-to-peer · serverless · private
+              Peer-to-peer · no accounts · private
             </div>
             <h1 className="text-balance font-display text-5xl font-bold leading-[0.95] tracking-tight sm:text-6xl xl:text-[4.25rem]">
               Calm video calls,{" "}
