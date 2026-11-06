@@ -2,6 +2,32 @@
 
 Calm, private, peer-to-peer video calls. Built with **WebRTC**, **Next.js 14**, **shadcn/ui**, and **Tailwind CSS**. Works on web and mobile from a single responsive client.
 
+<p align="center">
+  <img src="docs/screenshots/landing.png" alt="Halcyon landing page" width="100%">
+</p>
+
+## Screenshots
+
+| In a call, with chat | Invite flow (host) |
+|---|---|
+| ![Connected call with side chat](docs/screenshots/call-chat.png) | ![Host invite code](docs/screenshots/room-invite.png) |
+| **Reply flow (guest)** | **Waiting room** |
+| ![Guest reply code](docs/screenshots/room-reply.png) | ![Room before connecting](docs/screenshots/room-waiting.png) |
+
+| Mobile landing | Mobile join | Mobile call |
+|---|---|---|
+| <img src="docs/screenshots/landing-mobile.png" width="240"> | <img src="docs/screenshots/room-mobile-join.png" width="240"> | <img src="docs/screenshots/call-mobile.png" width="240"> |
+
+Screenshots are captured from a real peer-to-peer call between two headless Chromium instances with fake cameras. Regenerate them with:
+
+```bash
+npm run build && npm start
+```
+
+```bash
+npm run screenshots
+```
+
 ## What's inside
 
 - **Landing page** (`app/page.tsx`) — fully functional hero with a working "create room / join with code" widget, feature grid, how-it-works, and privacy section.
@@ -38,3 +64,7 @@ To skip copy/paste, drop in any signaling transport (WebSocket, Firebase, Supaba
 - shadcn-style primitives live in `components/ui` (Button, Input, Tooltip).
 - Design tokens (aurora palette, glass surfaces, motion) are in `tailwind.config.ts` + `app/globals.css`.
 - No data is recorded or stored. Closing the tab tears down the connection.
+
+## Roadmap
+
+See [docs/PLAN.md](docs/PLAN.md) for the gap analysis and the plan to finish the app.
