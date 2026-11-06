@@ -12,7 +12,7 @@ const grotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Halcyon — Calm, private video calls",
   description:
-    "Peer-to-peer video calls that never touch a server. Open a room, share a link, talk. Works on web and mobile.",
+    "Peer-to-peer video calls: your video and chat never touch a server. Open a room, share a link, talk. Works on web and mobile.",
 };
 
 export const viewport: Viewport = {

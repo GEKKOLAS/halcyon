@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  SignalingError,
+  type SignalMessage,
+  type SignalingChannel,
+} from "@/lib/signaling";
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -28,6 +33,8 @@ export type RtcErrorCode =
   | "expected-answer"
   | "expected-offer"
   | "ice-failed"
+  | "room-full"
+  | "signaling-failed"
   | "unknown";
 
 export interface RtcError {
@@ -68,6 +75,9 @@ const ERROR_MESSAGES: Record<RtcErrorCode, string> = {
     "That's a reply code. Paste the invite code the host sent you instead.",
   "ice-failed":
     "Couldn't open a direct connection. One of the networks may be blocking peer-to-peer traffic.",
+  "room-full": "This room already has two people in it. Start a new room instead.",
+  "signaling-failed":
+    "Couldn't reach the connection service. Check your internet, or connect manually with codes.",
   unknown: "Something went wrong. Please try again.",
 };
 
@@ -125,6 +135,7 @@ export function useWebRTC() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const sigRef = useRef<SignalingChannel | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasConnected = useRef(false);
   const micRef = useRef(true);
@@ -173,6 +184,8 @@ export function useWebRTC() {
       pc.close();
     }
     if (dcRef.current) dcRef.current.onclose = null;
+    sigRef.current?.close();
+    sigRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     pcRef.current = null;
@@ -361,6 +374,134 @@ export function useWebRTC() {
     [guard]
   );
 
+  /**
+   * Link mode: run the whole handshake over a signaling channel, trickling
+   * ICE candidates as they are found. Whichever peer has the lower id makes
+   * the offer, so both sides can join in any order (or at the same time).
+   */
+  const connectVia = useCallback(
+    (sig: SignalingChannel) =>
+      guard(async () => {
+        const stream = await getMedia();
+        sigRef.current?.close();
+        sigRef.current = sig;
+
+        // The peer we're negotiating with; messages from anyone else (e.g. a
+        // late "bye" from a tab that already reloaded) are ignored.
+        let remote: string | null = null;
+        let saidHelloBack = false;
+        let queued: RTCIceCandidateInit[] = [];
+
+        const newPeer = () => {
+          const pc = createPeer();
+          stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+          pc.onicecandidate = (e) => {
+            if (e.candidate) sig.send("candidate", e.candidate.toJSON());
+          };
+          queued = [];
+          return pc;
+        };
+        const flush = async (pc: RTCPeerConnection) => {
+          const list = queued;
+          queued = [];
+          for (const c of list) await pc.addIceCandidate(c).catch(() => {});
+        };
+        const alive = (pc: RTCPeerConnection | null) =>
+          !!pc && !["failed", "closed"].includes(pc.connectionState);
+
+        const handle = async (m: SignalMessage) => {
+          if (sigRef.current !== sig) return;
+          const pc = pcRef.current;
+          if (m.type !== "hello" && m.type !== "offer" && m.from !== remote) return;
+          switch (m.type) {
+            case "hello": {
+              if (remote && alive(pc)) {
+                if (m.from === remote || wasConnected.current) return;
+              }
+              if (sig.id < m.from) {
+                remote = m.from;
+                setConnState("connecting");
+                const next = newPeer();
+                wireDataChannel(next.createDataChannel("chat"));
+                await next.setLocalDescription(await next.createOffer());
+                await sig.send("offer", next.localDescription!.toJSON());
+              } else if (!saidHelloBack) {
+                // The other peer joined after us; let it know we're here.
+                saidHelloBack = true;
+                await sig.send("hello");
+              }
+              break;
+            }
+            case "offer": {
+              if (wasConnected.current) return;
+              remote = m.from;
+              setConnState("connecting");
+              const next = newPeer();
+              await next.setRemoteDescription(m.data as RTCSessionDescriptionInit);
+              await flush(next);
+              await next.setLocalDescription(await next.createAnswer());
+              await sig.send("answer", next.localDescription!.toJSON());
+              break;
+            }
+            case "answer":
+              if (pc && pc.signalingState === "have-local-offer") {
+                await pc.setRemoteDescription(m.data as RTCSessionDescriptionInit);
+                await flush(pc);
+              }
+              break;
+            case "candidate":
+              if (pc?.remoteDescription) {
+                await pc.addIceCandidate(m.data as RTCIceCandidateInit).catch(() => {});
+              } else queued.push(m.data as RTCIceCandidateInit);
+              break;
+            case "bye":
+              if (wasConnected.current) teardown("peer");
+              else {
+                // They left before we connected: wait for the next person.
+                remote = null;
+                saidHelloBack = false;
+                setConnState("idle");
+              }
+              break;
+          }
+        };
+
+        // Process messages one at a time, in order.
+        let chain = Promise.resolve();
+        sig.onMessage((m) => {
+          chain = chain
+            .then(() => handle(m))
+            .catch(() => setError(rtcError("unknown")));
+        });
+
+        try {
+          await sig.connect();
+        } catch (err) {
+          sigRef.current = null;
+          throw rtcError(
+            err instanceof SignalingError && err.reason === "room-full"
+              ? "room-full"
+              : "signaling-failed"
+          );
+        }
+        await sig.send("hello");
+        return true;
+      }),
+    [guard, getMedia, createPeer, wireDataChannel, teardown]
+  );
+
+  /** Stop link mode (e.g. to switch to manual codes). */
+  const disconnectSignaling = useCallback(() => {
+    sigRef.current?.close();
+    sigRef.current = null;
+    if (!wasConnected.current && pcRef.current) {
+      pcRef.current.onconnectionstatechange = null;
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    setConnState("idle");
+  }, []);
+
   const sendMessage = useCallback(
     (text: string) => {
       if (sendWire({ type: "chat", text })) pushMessage(text, true);
@@ -418,6 +559,8 @@ export function useWebRTC() {
     createOffer,
     acceptOffer,
     acceptAnswer,
+    connectVia,
+    disconnectSignaling,
     sendMessage,
     toggleMic,
     toggleCam,

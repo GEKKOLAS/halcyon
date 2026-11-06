@@ -102,7 +102,7 @@ function PasteField({
   );
 }
 
-function ErrorNotice({
+export function ErrorNotice({
   error,
   onRetry,
   retryLabel,
@@ -133,7 +133,7 @@ function ErrorNotice({
   );
 }
 
-function Waiting({ children }: { children: React.ReactNode }) {
+export function Waiting({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
       <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -157,6 +157,7 @@ interface SignalPanelProps {
   onRetry?: () => void;
   retryLabel?: string;
   onClearError: () => void;
+  footer?: React.ReactNode;
 }
 
 export function SignalPanel({
@@ -172,6 +173,7 @@ export function SignalPanel({
   onRetry,
   retryLabel,
   onClearError,
+  footer,
 }: SignalPanelProps) {
   const errorNotice = error && (
     <ErrorNotice error={error} onRetry={onRetry} retryLabel={retryLabel} />
@@ -250,6 +252,7 @@ export function SignalPanel({
           )}
         </div>
       )}
+      {footer}
     </div>
   );
 }

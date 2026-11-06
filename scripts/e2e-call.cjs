@@ -1,88 +1,182 @@
-// End-to-end check of a full call between two headless Chromium peers.
+// End-to-end check of full calls between headless Chromium peers.
 // Usage: npm run build && npm start   (in another shell)
 //        npm run test:e2e [-- baseUrl]
 // Requires Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`).
 const { chromium } = require("playwright");
+
 const B = process.argv[2] ?? "http://localhost:3000";
-const args = ["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream"];
+const args = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"];
 let fails = 0;
-const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
-const filled = (p) => p.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0, null, {timeout: 15000});
-async function pair(b) {
-  const h = await (await b.newContext()).newPage();
-  const g = await (await b.newContext()).newPage();
-  await h.goto(`${B}/room/t1?host=1`); await g.goto(`${B}/room/t1`);
-  await h.getByRole("button", { name: "Generate invite code" }).click(); await filled(h);
+const ok = (c, m) => {
+  console.log((c ? "PASS " : "FAIL ") + m);
+  if (!c) fails++;
+};
+const seen = (locator, timeout = 8000) =>
+  locator.waitFor({ timeout }).then(() => true, () => false);
+const connected = (p, timeout = 15000) =>
+  seen(p.getByText("Connected", { exact: true }), timeout);
+const room = () => "t" + Math.random().toString(36).slice(2, 10);
+
+const filled = (p) =>
+  p.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0, null, {
+    timeout: 15000,
+  });
+
+async function newPage(b) {
+  return (await b.newContext()).newPage();
+}
+
+async function manualPair(b) {
+  const id = room();
+  const h = await newPage(b);
+  const g = await newPage(b);
+  const manual = (p) =>
+    p.getByRole("button", { name: "Having trouble? Connect manually with codes" }).click();
+  // Switch the host first so the two can't auto-connect through the link.
+  await h.goto(`${B}/room/${id}?host=1`);
+  await manual(h);
+  await g.goto(`${B}/room/${id}`);
+  await manual(g);
+  await h.getByRole("button", { name: "Generate invite code" }).click();
+  await filled(h);
   const offer = await h.locator("textarea[readonly]").inputValue();
   return { h, g, offer };
 }
-async function connect(h, g, offer) {
+
+async function manualConnect(h, g, offer) {
   await g.locator("textarea").fill(offer);
-  await g.getByRole("button", { name: "Generate reply" }).click(); await filled(g);
+  await g.getByRole("button", { name: "Generate reply" }).click();
+  await filled(g);
   await h.locator("textarea:not([readonly])").fill(await g.locator("textarea[readonly]").inputValue());
   await h.getByRole("button", { name: "Connect" }).click();
-  await h.getByText("Connected", { exact: true }).waitFor({ timeout: 20000 });
-  await g.getByText("Connected", { exact: true }).waitFor({ timeout: 20000 });
+  return (await connected(h)) && (await connected(g));
 }
+
 (async () => {
   const b = await chromium.launch({ args });
-  // 1. camera toggle
+
+  // --- Link mode -----------------------------------------------------------
   {
-    const p = await (await b.newContext()).newPage();
-    await p.goto(`${B}/room/cam?host=1`); await p.waitForTimeout(1500);
-    await p.getByRole("button", { name: "Turn camera off" }).click(); await p.waitForTimeout(200);
-    await p.getByRole("button", { name: "Turn camera on" }).click(); await p.waitForTimeout(500);
-    const v = await p.evaluate(() => { const v = document.querySelector("video"); return !!v.srcObject && v.srcObject.getVideoTracks()[0].enabled && !v.classList.contains("invisible"); });
-    ok(v, "camera off→on keeps local video attached and visible");
+    const id = room();
+    const h = await newPage(b);
+    await h.goto(`${B}/room/${id}?host=1`);
+    ok(await seen(h.getByText("Waiting for someone to join…")), "link: host waits for someone");
+    const g = await newPage(b);
+    const t0 = Date.now();
+    await g.goto(`${B}/room/${id}`);
+    ok((await connected(g)) && (await connected(h)), `link: host first, guest opens link → connected (${Date.now() - t0} ms)`);
+
+    await g.getByRole("button", { name: "Chat" }).click();
+    await h.getByRole("button", { name: "Chat" }).click();
+    await g.getByPlaceholder("Message…").locator("visible=true").fill("hola");
+    await g.keyboard.press("Enter");
+    ok(await seen(h.getByText("hola").locator("visible=true")), "link: chat delivered");
+
+    // Third person is turned away
+    const x = await newPage(b);
+    await x.goto(`${B}/room/${id}`);
+    ok(await seen(x.getByText("already has two people")), "link: third visitor sees 'room full'");
+    await x.close();
+
+    // Guest leaves; host starts over; a new guest joins
+    await g.getByRole("button", { name: "Leave call" }).click();
+    ok(await seen(h.getByText("The other person left"), 5000), "link: host notified when guest leaves");
+    await h.getByRole("button", { name: "Start over in this room" }).click();
+    const g2 = await newPage(b);
+    await g2.goto(`${B}/room/${id}`);
+    ok((await connected(g2)) && (await connected(h)), "link: new guest can join after start over");
+    await h.context().close();
+    await g2.context().close();
   }
-  // 2. invalid codes
   {
-    const { h, g, offer } = await pair(b);
+    const id = room();
+    const g = await newPage(b);
+    await g.goto(`${B}/room/${id}`);
+    await g.waitForTimeout(1500);
+    const h = await newPage(b);
+    await h.goto(`${B}/room/${id}?host=1`);
+    ok((await connected(g)) && (await connected(h)), "link: guest first, host later → connected");
+    // Reload keeps the same seat
+    await g.reload();
+    ok(await seen(h.getByText("The other person left"), 5000), "link: reload notifies the other side");
+    await h.getByRole("button", { name: "Start over in this room" }).click();
+    ok((await connected(g)) && (await connected(h)), "link: reloaded tab reconnects after start over");
+    await h.context().close();
+    await g.context().close();
+  }
+  {
+    const id = room();
+    const [h, g] = [await newPage(b), await newPage(b)];
+    await Promise.all([h.goto(`${B}/room/${id}?host=1`), g.goto(`${B}/room/${id}`)]);
+    ok((await connected(g)) && (await connected(h)), "link: both join at the same time → connected");
+    await h.context().close();
+    await g.context().close();
+  }
+
+  // --- Media ----------------------------------------------------------------
+  {
+    const p = await newPage(b);
+    await p.goto(`${B}/room/${room()}?host=1`);
+    await p.waitForTimeout(1500);
+    await p.getByRole("button", { name: "Turn camera off" }).click();
+    await p.waitForTimeout(200);
+    await p.getByRole("button", { name: "Turn camera on" }).click();
+    await p.waitForTimeout(500);
+    const v = await p.evaluate(() => {
+      const v = document.querySelector("video");
+      return !!v.srcObject && v.srcObject.getVideoTracks()[0].enabled && !v.classList.contains("invisible");
+    });
+    ok(v, "camera off→on keeps local video attached and visible");
+    await p.context().close();
+  }
+
+  // --- Manual mode ----------------------------------------------------------
+  {
+    const { h, g, offer } = await manualPair(b);
     await g.locator("textarea").fill("garbage!!");
     await g.getByRole("button", { name: "Generate reply" }).click();
-    ok(await g.getByRole("alert").filter({ hasText: "doesn't look right" }).isVisible({ timeout: 5000 }).catch(() => false) || await g.getByText("doesn't look right").waitFor({timeout:5000}).then(()=>true).catch(()=>false), "garbage invite code shows error");
+    ok(await seen(g.getByText("doesn't look right")), "manual: garbage invite code shows error");
     await h.locator("textarea:not([readonly])").fill(offer);
     await h.getByRole("button", { name: "Connect" }).click();
-    ok(await h.getByText("That's an invite code").waitFor({timeout:5000}).then(()=>true).catch(()=>false), "host pasting own invite shows 'expected answer' error");
-    // recover and connect after errors
+    ok(await seen(h.getByText("That's an invite code")), "manual: host pasting own invite shows error");
     await h.locator("textarea:not([readonly])").fill("");
-    await connect(h, g, offer);
-    ok(true, "can still connect after invalid codes");
+    ok(await manualConnect(h, g, offer), "manual: can still connect after invalid codes");
     ok(await g.getByText("Host", { exact: true }).isVisible(), "guest sees remote labelled 'Host'");
     ok(await h.getByText("Guest", { exact: true }).isVisible(), "host sees remote labelled 'Guest'");
-    // remote mute indicator
+
     await h.getByRole("button", { name: "Mute" }).click();
-    ok(await g.getByRole("img", { name: "Muted" }).first().waitFor({timeout:5000}).then(()=>true).catch(()=>false), "guest sees host muted");
+    ok(await seen(g.getByRole("img", { name: "Muted" }).first()), "guest sees host muted");
     await h.getByRole("button", { name: "Turn camera off" }).click();
-    ok(await g.getByRole("img", { name: "Camera off" }).waitFor({timeout:5000}).then(()=>true).catch(()=>false), "guest sees host camera off");
-    // chat
-    await g.getByRole("button", { name: "Chat" }).click(); await h.getByRole("button", { name: "Chat" }).click();
-    await g.getByPlaceholder("Message…").locator("visible=true").fill("hola"); await g.keyboard.press("Enter");
-    ok(await h.getByText("hola").locator("visible=true").waitFor({timeout:5000}).then(()=>true).catch(()=>false), "chat message delivered");
-    // hang up
+    ok(await seen(g.getByRole("img", { name: "Camera off" })), "guest sees host camera off");
+
     const t0 = Date.now();
     await h.getByRole("button", { name: "Leave call" }).click();
-    const seen = await g.getByText("The other person left").waitFor({timeout:5000}).then(()=>true).catch(()=>false);
-    ok(seen, `guest notified of hang-up (${Date.now()-t0} ms)`);
-    await h.waitForURL(B + "/"); ok(true, "host returned home");
+    ok(await seen(g.getByText("The other person left"), 5000), `manual: guest notified of hang-up (${Date.now() - t0} ms)`);
+    await h.waitForURL(B + "/");
+    ok(true, "host returned home");
   }
-  // 3. tab close
   {
-    const { h, g, offer } = await pair(b);
-    await connect(h, g, offer);
+    const { h, g, offer } = await manualPair(b);
+    await manualConnect(h, g, offer);
     await g.close();
-    ok(await h.getByText("The other person left").waitFor({timeout:10000}).then(()=>true).catch(()=>false), "host notified when guest closes tab");
+    ok(await seen(h.getByText("The other person left"), 10000), "manual: host notified when guest closes tab");
   }
   await b.close();
-  // 4. permission denied
+
+  // --- Permission denied ------------------------------------------------------
   {
     const b2 = await chromium.launch({ args: ["--use-fake-device-for-media-stream"] });
-    const p = await (await b2.newContext()).newPage();
-    await p.addInitScript(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError")); });
-    await p.goto(`${B}/room/deny?host=1`);
-    ok(await p.getByText("access was blocked").waitFor({timeout:8000}).then(()=>true).catch(()=>false), "denied permission shows message");
+    const p = await newPage(b2);
+    await p.addInitScript(() => {
+      navigator.mediaDevices.getUserMedia = () =>
+        Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+    });
+    await p.goto(`${B}/room/${room()}?host=1`);
+    ok(await seen(p.getByText("access was blocked")), "denied permission shows message");
     ok(await p.getByRole("button", { name: "Try camera again" }).isVisible(), "retry button offered");
     await b2.close();
   }
-  console.log(fails ? `${fails} FAILED` : "ALL PASSED"); process.exit(fails ? 1 : 0);
+
+  console.log(fails ? `${fails} FAILED` : "ALL PASSED");
+  process.exit(fails ? 1 : 0);
 })();

@@ -49,17 +49,19 @@ Revisión de la "spec" (README + promesas de la landing) contra el código actua
 
 > Sin verificar automáticamente: el estado "Reconectando…" tras una caída de red real (difícil de simular en headless).
 
-### Fase 2 — Cumplir la spec: unirse con un enlace (≈2–3 días)
-Dos opciones; recomiendo **A**.
+### Fase 2 — Cumplir la spec: unirse con un enlace ✅ hecho
+Se eligió la opción **A** con un relay propio dentro de la app (sin servicios externos ni claves):
+- [x] `app/api/signal/[room]` + `lib/signal-store.ts`: buzón en memoria con long-polling; sólo guarda offer/answer/ICE ~2 min; máximo 2 personas por sala (409 "room full").
+- [x] `lib/signaling.ts`: interfaz `SignalingChannel` (intercambiable por WebSocket/Supabase) + cliente HTTP; envíos en orden, reintentos, `sendBeacon` al cerrar la pestaña.
+- [x] `connectVia()` en el hook: *trickle ICE*; el peer con id menor hace la oferta, así funciona en cualquier orden de llegada o a la vez. Conexión en ~0,5 s en local.
+- [x] Modo copiar/pegar conservado como "Connect manually with codes".
+- [x] Textos de landing y README actualizados (ya no dicen "sin servidores").
+- [x] e2e: host primero, invitado primero, simultáneo, sala llena, salir y volver a entrar, recarga.
 
-- **A. Señalización ligera** (mantiene "no media en servidores"): un canal efímero por `roomId` sólo para offer/answer/ICE.
-  - Opción más sencilla en Vercel: **Supabase Realtime** o **PeerJS cloud**; alternativa propia: una ruta `app/api/signal` con un WebSocket en un worker (Cloudflare/PartyKit).
-  - El hook ya expone `createOffer` / `acceptOffer` / `acceptAnswer`: crear `lib/signaling.ts` con una interfaz `SignalingChannel { send, onMessage, close }` y conectarla en `room-client.tsx`.
-  - Pasar a *trickle ICE* (enviar candidatos según llegan) → conexión en <1 s en vez de esperar 2,5 s.
-  - Conservar el modo copiar/pegar como fallback ("Modo sin servidor") detrás de un enlace.
-- **B. Sin servidor, mejor UX**: comprimir el SDP (`CompressionStream` + base64url), meter la oferta en el hash de la URL (`/room/id#o=...`) y mostrar un **QR**. Sigue requiriendo devolver la respuesta, así que sólo reduce fricción a la mitad.
-
-Ajustar textos de la landing y del README según la opción elegida.
+**Pendiente de esta fase:**
+- [ ] Hosting serverless (Vercel): el store en memoria no se comparte entre instancias → adaptador Redis/Upstash o un transporte WebSocket (requiere cuenta/claves).
+- [ ] Usar el canal para `restartIce()` cuando la conexión cae (hoy sólo se espera 15 s).
+- [ ] Límite de peticiones por IP en la ruta de señalización.
 
 ### Fase 3 — Funciones de llamada (≈2 días)
 - [ ] Cambiar cámara (frontal/trasera) con `replaceTrack` en el `RTCRtpSender`; selector de micro/cámara en desktop.
@@ -89,4 +91,4 @@ Ajustar textos de la landing y del README según la opción elegida.
 5. CI en verde con e2e de la llamada completa.
 
 ## 5. Orden recomendado
-Fase 1 → Fase 2 (A) → Fase 5 (e2e + CI) → Fase 3 → Fase 4. La Fase 2 es la decisión clave: define si Halcyon sigue siendo 100 % sin servidor o usa un canal de señalización mínimo.
+~~Fase 1~~ → ~~Fase 2~~ → Fase 5 (lint + CI; el e2e ya existe) → Fase 3 → Fase 4. Decisión pendiente: dónde desplegar (servidor Node → listo; Vercel → hace falta Redis o similar).

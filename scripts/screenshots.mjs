@@ -54,34 +54,18 @@ const guestBrowser = await launch(guestVideo);
   await m.screenshot({ path: `${OUT}/landing-mobile.png` });
 }
 
-// 2. Two peers complete the copy/paste handshake
-const room = "aurora42";
+// 2. Host waits with the room link; a guest opens it
+// Fresh room names per run, so seats left over from an aborted run never block us.
+const suffix = Math.random().toString(36).slice(2, 6);
+const room = `calm-${suffix}`;
 const host = await newPage(hostBrowser, desktop);
-const guest = await newPage(guestBrowser, desktop);
-await host.goto(`${BASE}/room/${room}?host=1`, { waitUntil: "networkidle" });
-await guest.goto(`${BASE}/room/${room}`, { waitUntil: "networkidle" });
-await settle(host, 2000);
+await host.goto(`${BASE}/room/${room}?host=1`, { waitUntil: "load" });
+await host.getByText("Waiting for someone to join…").waitFor();
+await settle(host, 1500);
 await host.screenshot({ path: `${OUT}/room-waiting.png` });
 
-await host.getByRole("button", { name: "Generate invite code" }).click();
-const offerBox = host.locator("textarea[readonly]");
-await offerBox.waitFor();
-await host.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0);
-await settle(host, 500);
-await host.screenshot({ path: `${OUT}/room-invite.png` });
-const offer = await offerBox.inputValue();
-
-await guest.locator("textarea").fill(offer);
-await guest.getByRole("button", { name: "Generate reply" }).click();
-const answerBox = guest.locator("textarea[readonly]");
-await answerBox.waitFor();
-await guest.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0);
-await settle(guest, 500);
-await guest.screenshot({ path: `${OUT}/room-reply.png` });
-const answer = await answerBox.inputValue();
-
-await host.locator("textarea:not([readonly])").fill(answer);
-await host.getByRole("button", { name: "Connect" }).click();
+const guest = await newPage(guestBrowser, desktop);
+await guest.goto(`${BASE}/room/${room}`, { waitUntil: "load" });
 await host.getByText("Connected", { exact: true }).waitFor({ timeout: 20000 });
 await guest.getByText("Connected", { exact: true }).waitFor({ timeout: 20000 });
 await settle(host, 2500);
@@ -102,28 +86,40 @@ await say(host, "Got it, thanks!");
 await settle(host, 800);
 await host.screenshot({ path: `${OUT}/call-chat.png` });
 
-// 4. Mobile call view (guest on a phone)
+// 4. Guest hangs up → host sees the end screen
+await guest.getByRole("button", { name: "Leave call" }).click();
+await host.getByText("The other person left").waitFor();
+await settle(host, 800);
+await host.screenshot({ path: `${OUT}/call-ended.png` });
+
+// 5. Manual fallback (copy/paste codes)
+{
+  const p = await newPage(hostBrowser, desktop);
+  await p.goto(`${BASE}/room/codes-${suffix}?host=1`, { waitUntil: "load" });
+  await p.getByRole("button", { name: "Having trouble? Connect manually with codes" }).click();
+  await p.getByRole("button", { name: "Generate invite code" }).click();
+  await p.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0);
+  await settle(p, 800);
+  await p.screenshot({ path: `${OUT}/room-manual.png` });
+}
+
 await hostBrowser.close();
 await guestBrowser.close();
 
-// Separate run for a mobile connected view
+// 6. Mobile: guest on a phone joins by link
 {
   const hb = await launch(hostVideo);
   const gb = await launch(guestVideo);
-  const h = await newPage(hb, desktop);
   const g = await newPage(gb, mobile);
-  await h.goto(`${BASE}/room/${room}?host=1`, { waitUntil: "networkidle" });
-  await g.goto(`${BASE}/room/${room}`, { waitUntil: "networkidle" });
+  await g.goto(`${BASE}/room/phone-${suffix}`, { waitUntil: "load" });
+  await g.getByText("Waiting for someone to join…").waitFor();
   await settle(g, 1500);
   await g.screenshot({ path: `${OUT}/room-mobile-join.png` });
-  await h.getByRole("button", { name: "Generate invite code" }).click();
-  await h.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0);
-  await g.locator("textarea").fill(await h.locator("textarea[readonly]").inputValue());
-  await g.getByRole("button", { name: "Generate reply" }).click();
-  await g.waitForFunction(() => document.querySelector("textarea[readonly]")?.value?.length > 0);
-  await h.locator("textarea:not([readonly])").fill(await g.locator("textarea[readonly]").inputValue());
-  await h.getByRole("button", { name: "Connect" }).click();
-  await g.waitForFunction(() => !document.querySelector("textarea"), null, { timeout: 20000 });
+  const h = await newPage(hb, desktop);
+  await h.goto(`${BASE}/room/phone-${suffix}?host=1`, { waitUntil: "load" });
+  await g.waitForFunction(() => !document.querySelector("input[aria-label='Room link']"), null, {
+    timeout: 20000,
+  });
   await settle(g, 2500);
   await g.screenshot({ path: `${OUT}/call-mobile.png` });
   await hb.close();

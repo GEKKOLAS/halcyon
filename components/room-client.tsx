@@ -9,6 +9,8 @@ import { AuroraBackground } from "@/components/aurora-background";
 import { Logo, PresenceOrb } from "@/components/logo";
 import { VideoTile } from "@/components/video-tile";
 import { SignalPanel } from "@/components/signal-panel";
+import { LinkPanel } from "@/components/link-panel";
+import { httpSignaling } from "@/lib/signaling";
 import { ControlBar } from "@/components/control-bar";
 import { ChatPanel } from "@/components/chat-panel";
 import { Button } from "@/components/ui/button";
@@ -65,6 +67,8 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const rtc = useWebRTC();
   const [offerCode, setOfferCode] = useState("");
   const [answerCode, setAnswerCode] = useState("");
+  const [mode, setMode] = useState<"link" | "manual">("link");
+  const [roomUrl, setRoomUrl] = useState(`/room/${roomId}`);
   const [busy, setBusy] = useState(false);
   const [answerApplied, setAnswerApplied] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -76,16 +80,36 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const connected = connState === "connected";
   const reconnecting = connState === "reconnecting";
   const inCall = connected || reconnecting;
-  // ICE checks can start before the host pastes the reply, so only treat the
-  // call as "connecting" once the host has actually applied the answer.
-  const negotiating = isHost && answerApplied && !inCall && connState !== "failed";
+  // In manual mode ICE checks can start before the host pastes the reply, so
+  // only treat the call as "connecting" once the host has applied the answer.
+  const negotiating =
+    mode === "link"
+      ? connState === "connecting"
+      : isHost && answerApplied && !inCall && connState !== "failed";
   const ended = endReason === "peer" || endReason === "network";
 
-  // Pre-warm camera so the local preview shows immediately
+  const startLink = () => rtc.connectVia(httpSignaling(roomId));
+
+  // Start the camera and join the room's handshake channel right away.
   useEffect(() => {
-    rtc.initMedia();
+    setRoomUrl(`${window.location.origin}/room/${roomId}`);
+    startLink();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const useManual = () => {
+    rtc.disconnectSignaling();
+    rtc.clearError();
+    setMode("manual");
+    rtc.initMedia();
+  };
+  const useLink = () => {
+    setOfferCode("");
+    setAnswerCode("");
+    setAnswerApplied(false);
+    setMode("link");
+    startLink();
+  };
 
   // Track unread chat
   useEffect(() => {
@@ -129,8 +153,10 @@ export function RoomClient({ roomId }: { roomId: string }) {
   let onRetry: (() => void) | undefined;
   let retryLabel: string | undefined;
   if (error && MEDIA_ERRORS.includes(error.code)) {
-    onRetry = () => run(() => rtc.initMedia());
+    onRetry = () => run<unknown>(() => (mode === "link" ? startLink() : rtc.initMedia()));
     retryLabel = "Try camera again";
+  } else if (error?.code === "signaling-failed") {
+    onRetry = () => run(startLink);
   } else if (error?.code === "ice-failed") {
     onRetry = () => window.location.reload();
     retryLabel = "Start over";
@@ -148,7 +174,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
 
   const copyRoom = async () => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`);
+      await navigator.clipboard.writeText(roomUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -166,6 +192,8 @@ export function RoomClient({ roomId }: { roomId: string }) {
     ? "Connecting…"
     : connState === "failed"
     ? "Couldn't connect"
+    : mode === "link"
+    ? "Waiting for someone"
     : isHost && offerCode
     ? "Waiting for reply"
     : !isHost && answerCode
@@ -258,20 +286,47 @@ export function RoomClient({ roomId }: { roomId: string }) {
                   className="h-full w-full"
                 />
               </div>
-              <SignalPanel
-                role={isHost ? "host" : "guest"}
-                offerCode={offerCode}
-                answerCode={answerCode}
-                onGenerateOffer={handleGenerateOffer}
-                onAcceptOffer={handleAcceptOffer}
-                onAcceptAnswer={handleAcceptAnswer}
-                busy={busy}
-                connecting={negotiating}
-                error={error}
-                onRetry={onRetry}
-                retryLabel={retryLabel}
-                onClearError={rtc.clearError}
-              />
+              {mode === "link" ? (
+                <LinkPanel
+                  roomUrl={roomUrl}
+                  isHost={isHost}
+                  connecting={negotiating}
+                  error={error}
+                  onRetry={onRetry}
+                  retryLabel={retryLabel}
+                  footer={
+                    <button
+                      onClick={useManual}
+                      className="mt-5 w-full text-center text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Having trouble? Connect manually with codes
+                    </button>
+                  }
+                />
+              ) : (
+                <SignalPanel
+                  role={isHost ? "host" : "guest"}
+                  offerCode={offerCode}
+                  answerCode={answerCode}
+                  onGenerateOffer={handleGenerateOffer}
+                  onAcceptOffer={handleAcceptOffer}
+                  onAcceptAnswer={handleAcceptAnswer}
+                  busy={busy}
+                  connecting={negotiating}
+                  error={error}
+                  onRetry={onRetry}
+                  retryLabel={retryLabel}
+                  onClearError={rtc.clearError}
+                  footer={
+                    <button
+                      onClick={useLink}
+                      className="mt-5 w-full text-center text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Use the room link instead
+                    </button>
+                  }
+                />
+              )}
             </div>
           )}
         </div>

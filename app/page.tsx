@@ -18,7 +18,7 @@ const features = [
   {
     icon: Lock,
     title: "End-to-end by design",
-    body: "Media flows peer-to-peer over an encrypted WebRTC channel. Your video never lands on our servers because we don't have any.",
+    body: "Media flows peer-to-peer over an encrypted WebRTC channel. A tiny relay introduces the two devices, then steps aside: your video and chat never touch it.",
   },
   {
     icon: Zap,
@@ -80,7 +80,7 @@ export default function Home() {
           <div className="animate-fade-up">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-xs text-muted-foreground">
               <PresenceOrb />
-              Peer-to-peer · serverless · private
+              Peer-to-peer · no accounts · private
             </div>
             <h1 className="font-display text-5xl font-bold leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
               Calm video calls,
