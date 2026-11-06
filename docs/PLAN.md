@@ -36,14 +36,18 @@ Revisión de la "spec" (README + promesas de la landing) contra el código actua
 
 ## 3. Plan por fases
 
-### Fase 1 — Estabilizar (≈1–2 días)
-- [ ] Arreglar `VideoTile`: mantener el `<video>` siempre montado y ocultarlo con CSS, o usar un callback ref que asigne `srcObject`.
-- [ ] Manejo de errores en `use-webrtc.ts`: exponer `error` (`permission-denied`, `no-device`, `invalid-code`, `ice-failed`) y mostrarlo en `SignalPanel` con un mensaje y botón de reintento.
-- [ ] Validar el código pegado (try/catch en `decode`, comprobar `type === "offer"/"answer"`).
-- [ ] Etiqueta remota según rol (`isHost ? "Guest" : "Host"`).
-- [ ] Separar `disconnected` (reconectando, con timeout) de `closed`; pantalla "La llamada terminó" con botón para volver.
-- [ ] Mensaje `{"type":"bye"}` por el data channel al colgar para que el otro lado se entere al instante.
-- [ ] Estados de UI correctos: `waiting` → `invite-ready` → `connecting` → `connected`.
+### Fase 1 — Estabilizar ✅ hecho
+- [x] Arreglar `VideoTile`: mantener el `<video>` siempre montado y ocultarlo con CSS, o usar un callback ref que asigne `srcObject`.
+- [x] Manejo de errores en `use-webrtc.ts`: exponer `error` (`permission-denied`, `no-device`, `invalid-code`, `ice-failed`) y mostrarlo en `SignalPanel` con un mensaje y botón de reintento.
+- [x] Validar el código pegado (try/catch en `decode`, comprobar `type === "offer"/"answer"`).
+- [x] Etiqueta remota según rol (`isHost ? "Guest" : "Host"`).
+- [x] Separar `disconnected` (reconectando, con timeout) de `closed`; pantalla "La llamada terminó" con botón para volver.
+- [x] Mensaje `{"type":"bye"}` por el data channel al colgar para que el otro lado se entere al instante.
+- [x] Estados de UI correctos: `waiting` → `invite-ready` → `connecting` → `connected`.
+- [x] Indicadores de micro/cámara del otro participante (adelantado de la Fase 3).
+- [x] Test e2e de la llamada completa: `npm run test:e2e` (adelantado de la Fase 5).
+
+> Sin verificar automáticamente: el estado "Reconectando…" tras una caída de red real (difícil de simular en headless).
 
 ### Fase 2 — Cumplir la spec: unirse con un enlace (≈2–3 días)
 Dos opciones; recomiendo **A**.
@@ -59,7 +63,7 @@ Ajustar textos de la landing y del README según la opción elegida.
 
 ### Fase 3 — Funciones de llamada (≈2 días)
 - [ ] Cambiar cámara (frontal/trasera) con `replaceTrack` en el `RTCRtpSender`; selector de micro/cámara en desktop.
-- [ ] Señalizar mute/cámara remotos por el data channel y mostrar los iconos en el tile remoto.
+- [x] Señalizar mute/cámara remotos por el data channel y mostrar los iconos en el tile remoto.
 - [ ] Indicador de calidad de red (`getStats`: RTT, pérdida de paquetes).
 - [ ] (Opcional) Compartir pantalla con `getDisplayMedia` + `replaceTrack`.
 - [ ] Pantalla previa ("lobby") con nombre opcional y prueba de micro antes de entrar.
@@ -67,7 +71,7 @@ Ajustar textos de la landing y del README según la opción elegida.
 ### Fase 4 — Producción (≈1–2 días)
 - [ ] TURN configurable por variables de entorno (`NEXT_PUBLIC_TURN_URL`, credenciales temporales vía ruta API) — p. ej. Cloudflare Calls TURN, Metered o coturn propio.
 - [ ] Favicon, `opengraph-image.tsx`, `not-found.tsx`, `manifest.webmanifest`.
-- [ ] Accesibilidad: quitar `maximumScale`, `aria-live` en el estado, foco atrapado en el chat móvil, un único `TooltipProvider`.
+- [ ] Accesibilidad: ~~quitar `maximumScale`~~ (hecho), `aria-live` en el estado, foco atrapado en el chat móvil, un único `TooltipProvider`.
 - [ ] Cabeceras de seguridad (`Permissions-Policy`, CSP) en `next.config.js`.
 - [ ] Despliegue en Vercel con HTTPS.
 

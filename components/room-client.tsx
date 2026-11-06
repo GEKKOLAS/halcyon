@@ -3,35 +3,87 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Check, Copy, ArrowLeft } from "lucide-react";
-import { useWebRTC } from "@/hooks/use-webrtc";
+import { Check, Copy, Loader2, PhoneOff, RotateCcw, WifiOff } from "lucide-react";
+import { useWebRTC, type EndReason, type RtcErrorCode } from "@/hooks/use-webrtc";
 import { AuroraBackground } from "@/components/aurora-background";
 import { Logo, PresenceOrb } from "@/components/logo";
 import { VideoTile } from "@/components/video-tile";
 import { SignalPanel } from "@/components/signal-panel";
 import { ControlBar } from "@/components/control-bar";
 import { ChatPanel } from "@/components/chat-panel";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const MEDIA_ERRORS: RtcErrorCode[] = [
+  "permission-denied",
+  "no-device",
+  "device-busy",
+  "media-failed",
+];
+
+const END_COPY: Record<EndReason, { title: string; body: string }> = {
+  peer: {
+    title: "The other person left",
+    body: "The call has ended. Nothing was recorded.",
+  },
+  network: {
+    title: "Connection lost",
+    body: "The direct connection dropped and couldn't recover.",
+  },
+  local: { title: "Call ended", body: "Nothing was recorded." },
+};
+
+function CallEnded({ reason }: { reason: EndReason }) {
+  const { title, body } = END_COPY[reason];
+  const Icon = reason === "network" ? WifiOff : PhoneOff;
+  return (
+    <div className="glass-strong w-full max-w-sm rounded-3xl p-8 text-center" role="status">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-secondary text-primary">
+        <Icon className="h-6 w-6" />
+      </div>
+      <h2 className="mt-5 font-display text-xl font-semibold">{title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+      <div className="mt-6 flex flex-col gap-2">
+        <Button onClick={() => window.location.reload()}>
+          <RotateCcw className="h-4 w-4" />
+          Start over in this room
+        </Button>
+        <Button variant="ghost" asChild>
+          <Link href="/">Back home</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function RoomClient({ roomId }: { roomId: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const isHost = params.get("host") === "1";
+  const remoteLabel = isHost ? "Guest" : "Host";
 
   const rtc = useWebRTC();
   const [offerCode, setOfferCode] = useState("");
   const [answerCode, setAnswerCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [answerApplied, setAnswerApplied] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [copied, setCopied] = useState(false);
   const lastMsgCount = useRef(0);
 
-  const connected = rtc.connState === "connected";
-  const connecting = rtc.connState === "connecting";
+  const { connState, endReason, error } = rtc;
+  const connected = connState === "connected";
+  const reconnecting = connState === "reconnecting";
+  const inCall = connected || reconnecting;
+  // ICE checks can start before the host pastes the reply, so only treat the
+  // call as "connecting" once the host has actually applied the answer.
+  const negotiating = isHost && answerApplied && !inCall && connState !== "failed";
+  const ended = endReason === "peer" || endReason === "network";
 
   // Pre-warm camera so the local preview shows immediately
   useEffect(() => {
-    rtc.initMedia().catch(() => {});
+    rtc.initMedia();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -44,17 +96,45 @@ export function RoomClient({ roomId }: { roomId: string }) {
     lastMsgCount.current = rtc.messages.length;
   }, [rtc.messages, chatOpen]);
 
-  const handleGenerateOffer = async () => {
-    const code = await rtc.createOffer();
-    setOfferCode(code);
+  // Close chat when the call ends
+  useEffect(() => {
+    if (ended) setChatOpen(false);
+  }, [ended]);
+
+  const run = async <T,>(fn: () => Promise<T>) => {
+    setBusy(true);
+    try {
+      return await fn();
+    } finally {
+      setBusy(false);
+    }
   };
-  const handleAcceptOffer = async (code: string) => {
-    const ans = await rtc.acceptOffer(code);
-    setAnswerCode(ans);
-  };
-  const handleAcceptAnswer = async (code: string) => {
-    await rtc.acceptAnswer(code);
-  };
+
+  const handleGenerateOffer = () =>
+    run(async () => {
+      const code = await rtc.createOffer();
+      if (code) setOfferCode(code);
+    });
+  const handleAcceptOffer = (code: string) =>
+    run(async () => {
+      const ans = await rtc.acceptOffer(code);
+      if (ans) setAnswerCode(ans);
+    });
+  const handleAcceptAnswer = (code: string) =>
+    run(async () => {
+      if (await rtc.acceptAnswer(code)) setAnswerApplied(true);
+    });
+
+  // What "try again" means depends on what failed.
+  let onRetry: (() => void) | undefined;
+  let retryLabel: string | undefined;
+  if (error && MEDIA_ERRORS.includes(error.code)) {
+    onRetry = () => run(() => rtc.initMedia());
+    retryLabel = "Try camera again";
+  } else if (error?.code === "ice-failed") {
+    onRetry = () => window.location.reload();
+    retryLabel = "Start over";
+  }
 
   const openChat = () => {
     setChatOpen((o) => !o);
@@ -67,12 +147,30 @@ export function RoomClient({ roomId }: { roomId: string }) {
   };
 
   const copyRoom = async () => {
-    await navigator.clipboard.writeText(
-      `${window.location.origin}/room/${roomId}`
-    );
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard unavailable; nothing to do.
+    }
   };
+
+  const status = ended
+    ? "Call ended"
+    : connected
+    ? "Connected"
+    : reconnecting
+    ? "Reconnecting…"
+    : negotiating
+    ? "Connecting…"
+    : connState === "failed"
+    ? "Couldn't connect"
+    : isHost && offerCode
+    ? "Waiting for reply"
+    : !isHost && answerCode
+    ? "Waiting for host"
+    : "Not connected";
 
   return (
     <div className="relative flex h-[100dvh] flex-col overflow-hidden">
@@ -84,12 +182,16 @@ export function RoomClient({ roomId }: { roomId: string }) {
           <Logo />
         </Link>
         <div className="flex items-center gap-2">
-          <span className="hidden items-center gap-2 rounded-full glass px-3 py-1.5 text-xs sm:flex">
+          <span
+            className="hidden items-center gap-2 rounded-full glass px-3 py-1.5 text-xs sm:flex"
+            aria-live="polite"
+          >
             <PresenceOrb className={cn(!connected && "opacity-40")} />
-            {connected ? "Connected" : connecting ? "Connecting…" : "Waiting"}
+            {status}
           </span>
           <button
             onClick={copyRoom}
+            aria-label={`Copy room link (${roomId})`}
             className="flex items-center gap-2 rounded-full glass px-3 py-1.5 font-mono text-xs transition-colors hover:bg-secondary"
           >
             {copied ? (
@@ -105,14 +207,30 @@ export function RoomClient({ roomId }: { roomId: string }) {
       {/* Main stage */}
       <div className="relative z-10 flex flex-1 gap-4 overflow-hidden px-4 pb-4 sm:px-6">
         <div className="relative flex flex-1 items-center justify-center">
-          {connected ? (
+          {ended ? (
+            <CallEnded reason={endReason!} />
+          ) : inCall ? (
             <>
               {/* Remote fills the stage */}
               <VideoTile
                 stream={rtc.remoteStream}
-                label="Guest"
+                label={remoteLabel}
+                audioOff={!rtc.remoteMicOn}
+                videoOff={!rtc.remoteCamOn}
                 className="h-full w-full"
-              />
+              >
+                {reconnecting && (
+                  <div
+                    className="absolute inset-0 grid place-items-center bg-background/60 backdrop-blur-sm"
+                    role="status"
+                  >
+                    <div className="flex items-center gap-2 rounded-full glass-strong px-4 py-2 text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      Reconnecting…
+                    </div>
+                  </div>
+                )}
+              </VideoTile>
               {/* Local PiP */}
               <div className="absolute bottom-4 right-4 aspect-[3/4] w-28 sm:w-44 md:w-52">
                 <VideoTile
@@ -147,7 +265,12 @@ export function RoomClient({ roomId }: { roomId: string }) {
                 onGenerateOffer={handleGenerateOffer}
                 onAcceptOffer={handleAcceptOffer}
                 onAcceptAnswer={handleAcceptAnswer}
-                connecting={connecting}
+                busy={busy}
+                connecting={negotiating}
+                error={error}
+                onRetry={onRetry}
+                retryLabel={retryLabel}
+                onClearError={rtc.clearError}
               />
             </div>
           )}
@@ -167,17 +290,19 @@ export function RoomClient({ roomId }: { roomId: string }) {
       </div>
 
       {/* Controls */}
-      <div className="z-20 flex justify-center pb-5 sm:pb-7">
-        <ControlBar
-          micOn={rtc.micOn}
-          camOn={rtc.camOn}
-          onToggleMic={rtc.toggleMic}
-          onToggleCam={rtc.toggleCam}
-          onHangUp={leave}
-          onToggleChat={openChat}
-          unread={unread}
-        />
-      </div>
+      {!ended && (
+        <div className="z-20 flex justify-center pb-5 sm:pb-7">
+          <ControlBar
+            micOn={rtc.micOn}
+            camOn={rtc.camOn}
+            onToggleMic={rtc.toggleMic}
+            onToggleCam={rtc.toggleCam}
+            onHangUp={leave}
+            onToggleChat={openChat}
+            unread={unread}
+          />
+        </div>
+      )}
 
       {/* Chat — full-screen sheet on mobile */}
       {chatOpen && (

@@ -74,7 +74,7 @@ export function ChatPanel({ messages, onSend, onClose, disabled }: ChatPanelProp
         <Input
           value={val}
           onChange={(e) => setVal(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
+          onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && send()}
           placeholder={disabled ? "Connect to chat…" : "Message…"}
           disabled={disabled}
           className="h-11"
