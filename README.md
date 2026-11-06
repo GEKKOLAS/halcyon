@@ -6,6 +6,8 @@ Calm, private, peer-to-peer video calls. Built with **WebRTC**, **Next.js 14**, 
 
 - **Landing page** (`app/page.tsx`) — fully functional hero with a working "create room / join with code" widget, feature grid, how-it-works, and privacy section.
 - **Video call client** (`components/room-client.tsx`) — responsive call stage. Desktop shows chat as a side panel; mobile uses a picture-in-picture self-view and a full-screen chat sheet.
+- **Interactive UI** — floating navbar with active-section pill, 3D-tilt live call preview, spotlight bento cards, auto-playing how-it-works stepper, segmented room-code input (accepts pasted links).
+- **In-call UX** — draggable picture-in-picture (double-click to swap), speaking indicators from live audio levels, emoji reactions over the data channel, call timer, auto-hiding controls, full screen, and keyboard shortcuts (`M` mute · `V` camera · `C` chat · `F` full screen · `1–6` react).
 - **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, mute/camera toggles, and a `RTCDataChannel` text chat. No backend required.
 
 ## Run it
@@ -36,5 +38,6 @@ To skip copy/paste, drop in any signaling transport (WebSocket, Firebase, Supaba
 ## Stack notes
 
 - shadcn-style primitives live in `components/ui` (Button, Input, Tooltip).
+- Animations use **framer-motion**; scroll reveals and spotlight hover helpers are in `components/motion.tsx`.
 - Design tokens (aurora palette, glass surfaces, motion) are in `tailwind.config.ts` + `app/globals.css`.
 - No data is recorded or stored. Closing the tab tears down the connection.

@@ -9,6 +9,12 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 export type ConnState = "idle" | "connecting" | "connected" | "failed" | "closed";
 
+export interface Reaction {
+  id: string;
+  emoji: string;
+  mine: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   text: string;
@@ -32,6 +38,17 @@ export function useWebRTC() {
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
+
+  const pushReaction = useCallback((emoji: string, mine: boolean) => {
+    const id = Math.random().toString(36).slice(2);
+    setReactions((prev) => [...prev, { id, emoji, mine }]);
+    setTimeout(
+      () => setReactions((prev) => prev.filter((r) => r.id !== id)),
+      2600
+    );
+  }, []);
 
   const pushMessage = useCallback((text: string, mine: boolean) => {
     setMessages((prev) => [
@@ -43,9 +60,17 @@ export function useWebRTC() {
   const wireDataChannel = useCallback(
     (dc: RTCDataChannel) => {
       dcRef.current = dc;
-      dc.onmessage = (e) => pushMessage(e.data, false);
+      dc.onmessage = (e) => {
+        // Structured payloads; fall back to plain text for older peers.
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg?.type === "reaction") return pushReaction(msg.emoji, false);
+          if (msg?.type === "chat") return pushMessage(msg.text, false);
+        } catch {}
+        pushMessage(String(e.data), false);
+      };
     },
-    [pushMessage]
+    [pushMessage, pushReaction]
   );
 
   const createPeer = useCallback(() => {
@@ -54,7 +79,10 @@ export function useWebRTC() {
     pc.ondatachannel = (e) => wireDataChannel(e.channel);
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
-      if (s === "connected") setConnState("connected");
+      if (s === "connected") {
+        setConnState("connected");
+        setConnectedAt((t) => t ?? Date.now());
+      }
       else if (s === "failed") setConnState("failed");
       else if (s === "disconnected" || s === "closed") setConnState("closed");
     };
@@ -123,11 +151,22 @@ export function useWebRTC() {
     (text: string) => {
       const dc = dcRef.current;
       if (dc && dc.readyState === "open") {
-        dc.send(text);
+        dc.send(JSON.stringify({ type: "chat", text }));
         pushMessage(text, true);
       }
     },
     [pushMessage]
+  );
+
+  const sendReaction = useCallback(
+    (emoji: string) => {
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "reaction", emoji }));
+      }
+      pushReaction(emoji, true);
+    },
+    [pushReaction]
   );
   const acceptAnswer = useCallback(async (answerCode: string) => {
     const pc = pcRef.current;
@@ -168,11 +207,14 @@ export function useWebRTC() {
     micOn,
     camOn,
     messages,
+    reactions,
+    connectedAt,
     initMedia,
     createOffer,
     acceptOffer,
     acceptAnswer,
     sendMessage,
+    sendReaction,
     toggleMic,
     toggleCam,
     hangUp,

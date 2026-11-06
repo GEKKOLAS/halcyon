@@ -79,6 +79,13 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
         },
+        shimmer: {
+          from: { backgroundPosition: "200% 0" },
+          to: { backgroundPosition: "-200% 0" },
+        },
+        "spin-slow": {
+          to: { transform: "rotate(360deg)" },
+        },
         "fade-up": {
           from: { opacity: "0", transform: "translateY(16px)" },
           to: { opacity: "1", transform: "translateY(0)" },
@@ -90,6 +97,8 @@ const config: Config = {
         aurora: "aurora 18s ease-in-out infinite",
         "pulse-ring": "pulse-ring 2.4s cubic-bezier(0.4,0,0.2,1) infinite",
         float: "float 6s ease-in-out infinite",
+        shimmer: "shimmer 6s linear infinite",
+        "spin-slow": "spin-slow 12s linear infinite",
         "fade-up": "fade-up 0.7s cubic-bezier(0.16,1,0.3,1) both",
       },
     },
