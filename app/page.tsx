@@ -20,7 +20,7 @@ const features = [
   {
     icon: Lock,
     title: "End-to-end by design",
-    body: "Media flows peer-to-peer over an encrypted WebRTC channel. Your video never lands on our servers because we don't have any.",
+    body: "Media flows peer-to-peer over an encrypted WebRTC channel. A tiny relay introduces the two devices, then steps aside: your video and chat never touch it.",
     span: "lg:col-span-2",
     visual: "lock",
   },
@@ -55,7 +55,7 @@ const features = [
 
 const stats = [
   { v: "0", l: "servers in the media path" },
-  { v: "1", l: "code to swap" },
+  { v: "1", l: "link to share" },
   { v: "∞", l: "minutes, free" },
   { v: "0", l: "accounts needed" },
 ];

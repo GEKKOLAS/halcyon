@@ -41,10 +41,10 @@ export function LinkPanel({
     navigator.share({ title: "Join my Halcyon call", url: roomUrl }).catch(() => {});
 
   return (
-    <div className="glass-strong w-full max-w-md rounded-3xl p-6">
+    <div className="w-full max-w-md rounded-[2rem] glass-strong p-6 shadow-2xl">
       <div className="space-y-5">
         <div>
-          <h3 className="font-display text-lg font-semibold">
+          <h3 className="font-display text-xl font-semibold">
             {isHost ? "Invite someone" : "Join the call"}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">

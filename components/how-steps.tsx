@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, Link2, MicOff, PhoneOff, Users, Video } from "lucide-react";
+import { Check, Link2, MicOff, PhoneOff, Users, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const steps = [
@@ -13,8 +13,8 @@ const steps = [
   },
   {
     icon: Users,
-    title: "Swap one code",
-    body: "Send your invite code, paste back their reply. That's the whole handshake.",
+    title: "Share the link",
+    body: "Send it to whoever you want. The call starts the moment they open it.",
   },
   {
     icon: MicOff,
@@ -67,7 +67,7 @@ function StepVisual({ i }: { i: number }) {
           animate={{ left: ["22%", "72%", "22%"] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Copy className="h-3 w-3" />
+          <Link2 className="h-3 w-3" />
         </motion.span>
       </div>
     );

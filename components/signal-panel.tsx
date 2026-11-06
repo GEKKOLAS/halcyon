@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, ArrowRight, ClipboardPaste, Loader2, Share2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  ClipboardPaste,
+  Copy,
+  Loader2,
+  RotateCcw,
+  Share2,
+} from "lucide-react";
+import type { RtcError } from "@/hooks/use-webrtc";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-function CopyField({ value }: { value: string }) {
+function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   const canShare = typeof navigator !== "undefined" && "share" in navigator;
 
@@ -23,18 +33,19 @@ function CopyField({ value }: { value: string }) {
 
   return (
     <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="relative">
         <textarea
           readOnly
           value={value}
           aria-label={label}
           onClick={(e) => e.currentTarget.select()}
-          className="no-scrollbar h-20 w-full resize-none rounded-2xl border border-input bg-black/20 p-3 font-mono text-[11px] leading-snug text-muted-foreground focus-visible:outline-none"
+          className="no-scrollbar h-20 w-full resize-none rounded-2xl border border-input bg-black/20 p-3 font-mono text-[11px] leading-snug text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-2xl bg-gradient-to-t from-[hsl(230_30%_9%)] to-transparent" />
       </div>
       <div className="flex gap-2">
-        <Button className="flex-1" onClick={copy}>
+        <Button className="flex-1" onClick={copy} aria-label={copied ? "Copied" : "Copy code"}>
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={copied ? "y" : "n"}
@@ -59,73 +70,78 @@ function CopyField({ value }: { value: string }) {
 }
 
 function PasteField({
+  label,
   placeholder,
   onSubmit,
   cta,
   busy,
+  busyLabel,
+  invalid,
+  onChange,
 }: {
+  label: string;
   placeholder: string;
-  onSubmit: (v: string) => Promise<void> | void;
+  onSubmit: (v: string) => void;
   cta: string;
-  busy?: boolean;
+  busy: boolean;
+  busyLabel: string;
+  invalid?: boolean;
+  onChange?: () => void;
 }) {
   const [val, setVal] = useState("");
-  const [error, setError] = useState("");
-
-  const submit = async (v = val) => {
-    setError("");
-    try {
-      await onSubmit(v);
-    } catch {
-      setError("That code doesn't look right. Check you copied all of it.");
-    }
-  };
 
   const paste = async () => {
     try {
-      const t = await navigator.clipboard.readText();
-      setVal(t);
-    } catch {}
+      setVal(await navigator.clipboard.readText());
+      onChange?.();
+    } catch {
+      // Clipboard read can be blocked; typing/pasting still works.
+    }
   };
 
   return (
     <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="relative">
         <textarea
           value={val}
+          aria-label={label}
           onChange={(e) => {
             setVal(e.target.value);
-            setError("");
+            onChange?.();
           }}
           placeholder={placeholder}
+          disabled={busy}
           className={cn(
-            "no-scrollbar h-20 w-full resize-none rounded-2xl border bg-black/20 p-3 pr-20 font-mono text-[11px] leading-snug transition-colors placeholder:font-sans placeholder:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            error ? "border-destructive/60" : "border-input"
+            "no-scrollbar h-20 w-full resize-none rounded-2xl border bg-black/20 p-3 pr-20 font-mono text-[11px] leading-snug transition-colors placeholder:font-sans placeholder:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+            invalid ? "border-destructive/60" : "border-input"
           )}
         />
         <button
+          type="button"
           onClick={paste}
-          className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
+          disabled={busy}
+          className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
         >
           <ClipboardPaste className="h-3 w-3" /> Paste
         </button>
       </div>
-      <AnimatePresence>
-        {error && (
-          <motion.p
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="text-xs text-destructive"
-          >
-            {error}
-          </motion.p>
+      <Button
+        className="group w-full"
+        disabled={!val.trim() || busy}
+        onClick={() => onSubmit(val)}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {busyLabel}
+          </>
+        ) : (
+          <>
+            {cta}
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </>
         )}
-      </AnimatePresence>
-      <Button className="group w-full" disabled={!val.trim() || busy} onClick={() => submit()}>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {cta}
-        {!busy && <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />}
       </Button>
     </div>
   );
@@ -141,8 +157,10 @@ export function ErrorNotice({
   retryLabel?: string;
 }) {
   return (
-    <div
+    <motion.div
       role="alert"
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
       className="flex gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-sm"
     >
       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -158,7 +176,7 @@ export function ErrorNotice({
           </button>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -171,29 +189,14 @@ export function Waiting({ children }: { children: React.ReactNode }) {
   );
 }
 
-interface SignalPanelProps {
-  role: "host" | "guest";
-  offerCode: string;
-  answerCode: string;
-  onGenerateOffer: () => Promise<void> | void;
-  onAcceptOffer: (code: string) => Promise<void> | void;
-  onAcceptAnswer: (code: string) => Promise<void> | void;
-  connecting: boolean;
-  error: RtcError | null;
-  onRetry?: () => void;
-  retryLabel?: string;
-  onClearError: () => void;
-  footer?: React.ReactNode;
-}
-
 function Stepper({ labels, current }: { labels: string[]; current: number }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" aria-hidden>
       {labels.map((l, i) => {
         const done = i < current;
         const on = i === current;
         return (
-          <div key={l} className="flex flex-1 items-center gap-2">
+          <div key={l} className="flex flex-1 items-center gap-2 last:flex-none">
             <div className="flex items-center gap-2">
               <motion.span
                 animate={{ scale: on ? 1.08 : 1 }}
@@ -236,8 +239,26 @@ const slide = {
   initial: { opacity: 0, x: 24 },
   animate: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -24 },
-  transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] },
+  transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] as const },
 };
+
+interface SignalPanelProps {
+  role: "host" | "guest";
+  offerCode: string;
+  answerCode: string;
+  onGenerateOffer: () => void;
+  onAcceptOffer: (code: string) => void;
+  onAcceptAnswer: (code: string) => void;
+  /** An async step (camera, code generation) is in progress. */
+  busy: boolean;
+  /** The answer has been applied and ICE/DTLS is negotiating. */
+  connecting: boolean;
+  error: RtcError | null;
+  onRetry?: () => void;
+  retryLabel?: string;
+  onClearError: () => void;
+  footer?: React.ReactNode;
+}
 
 export function SignalPanel({
   role,
@@ -254,18 +275,12 @@ export function SignalPanel({
   onClearError,
   footer,
 }: SignalPanelProps) {
-  const [busy, setBusy] = useState(false);
-  const [answered, setAnswered] = useState(false);
-  const run = async (fn: () => Promise<void> | void) => {
-    setBusy(true);
-    try {
-      await fn();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const errorNotice = error && (
+    <ErrorNotice error={error} onRetry={onRetry} retryLabel={retryLabel} />
+  );
+  const codeError = error?.code === "invalid-code" || error?.code?.startsWith("expected-");
 
-  const hostStep = !offerCode ? 0 : answered ? 2 : 1;
+  const hostStep = !offerCode ? 0 : connecting ? 2 : 1;
   const guestStep = !answerCode ? 0 : 1;
 
   return (
@@ -280,18 +295,16 @@ export function SignalPanel({
           </div>
           <Stepper labels={["Create", "Share", "Connect"]} current={hostStep} />
 
-          <AnimatePresence mode="wait">
+          {errorNotice}
+
+          <AnimatePresence mode="wait" initial={false}>
             {!offerCode ? (
               <motion.div key="gen" {...slide}>
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={() => run(onGenerateOffer)}
-                  disabled={busy}
-                >
+                <Button size="lg" className="w-full" onClick={onGenerateOffer} disabled={busy}>
                   {busy ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Gathering network routes…
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Preparing invite…
                     </>
                   ) : (
                     "Generate invite code"
@@ -300,28 +313,17 @@ export function SignalPanel({
               </motion.div>
             ) : (
               <motion.div key="exchange" {...slide} className="space-y-5">
-                <div>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    1 · Send this invite code
-                  </p>
-                  <CopyField value={offerCode} />
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    2 · Paste their reply code
-                  </p>
-                  <PasteField
-                    placeholder="Paste the reply code from your guest…"
-                    cta={answered ? "Connecting…" : "Connect"}
-                    busy={busy || answered}
-                    onSubmit={(v) =>
-                      run(async () => {
-                        await onAcceptAnswer(v);
-                        setAnswered(true);
-                      })
-                    }
-                  />
-                </div>
+                <CopyField label="1 · Send this invite code" value={offerCode} />
+                <PasteField
+                  label="2 · Paste their reply code"
+                  placeholder="Paste the reply code from your guest…"
+                  cta="Connect"
+                  busy={busy || connecting}
+                  busyLabel="Connecting…"
+                  invalid={codeError}
+                  onSubmit={onAcceptAnswer}
+                  onChange={onClearError}
+                />
               </motion.div>
             )}
           </AnimatePresence>
@@ -336,26 +338,26 @@ export function SignalPanel({
           </div>
           <Stepper labels={["Paste invite", "Send reply"]} current={guestStep} />
 
-          <AnimatePresence mode="wait">
+          {errorNotice}
+
+          <AnimatePresence mode="wait" initial={false}>
             {!answerCode ? (
               <motion.div key="paste" {...slide}>
                 <PasteField
+                  label="1 · Paste the invite code"
                   placeholder="Paste the invite code from the host…"
-                  cta={busy ? "Generating reply…" : "Generate reply"}
+                  cta="Generate reply"
                   busy={busy}
-                  onSubmit={(v) => run(() => onAcceptOffer(v))}
+                  busyLabel="Preparing reply…"
+                  invalid={codeError}
+                  onSubmit={onAcceptOffer}
+                  onChange={onClearError}
                 />
               </motion.div>
             ) : (
               <motion.div key="reply" {...slide} className="space-y-3">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Send this reply code back to the host
-                </p>
-                <CopyField value={answerCode} />
-                <p className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                  Waiting for the host to connect…
-                </p>
+                <CopyField label="2 · Send this reply code back to the host" value={answerCode} />
+                {!error && <Waiting>Waiting for the host to connect…</Waiting>}
               </motion.div>
             )}
           </AnimatePresence>
