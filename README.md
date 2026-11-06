@@ -5,20 +5,32 @@
 Calm, private, peer-to-peer video calls. Built with **WebRTC**, **Next.js 14**, **shadcn/ui**, and **Tailwind CSS**. Works on web and mobile from a single responsive client.
 
 <p align="center">
-  <img src="docs/screenshots/landing.png" alt="Halcyon landing page" width="100%">
+  <img src="docs/screenshots/landing.jpg" alt="Halcyon landing page: headline, create/join widget and an interactive call preview" width="100%">
 </p>
 
 ## Screenshots
 
-| In a call, with chat | Waiting with the room link |
-|---|---|
-| ![Connected call with side chat](docs/screenshots/call-chat.png) | ![Host waiting with the room link](docs/screenshots/room-waiting.png) |
-| **Call ended** | **Manual fallback (codes)** |
-| ![The other person left](docs/screenshots/call-ended.png) | ![Manual invite code](docs/screenshots/room-manual.png) |
+### Landing
 
-| Mobile landing | Mobile join | Mobile call |
+| Bento features with cursor spotlight | Auto-playing "how it works" |
+|---|---|
+| ![Feature grid](docs/screenshots/landing-features.jpg) | ![How it works stepper](docs/screenshots/landing-how.jpg) |
+
+### Calls
+
+| In a call | In a call, with chat |
+|---|---|
+| ![Connected call with network badge, timer and draggable self-view](docs/screenshots/call-connected.jpg) | ![Connected call with side chat](docs/screenshots/call-chat.jpg) |
+| **Waiting with the room link** | **Manual fallback (codes)** |
+| ![Host waiting with the room link](docs/screenshots/room-waiting.jpg) | ![Manual invite code with stepper](docs/screenshots/room-manual.jpg) |
+| **Call ended** | |
+| ![The other person left](docs/screenshots/call-ended.jpg) | |
+
+### Mobile
+
+| Landing | Joining by link | In a call |
 |---|---|---|
-| <img src="docs/screenshots/landing-mobile.png" width="240"> | <img src="docs/screenshots/room-mobile-join.png" width="240"> | <img src="docs/screenshots/call-mobile.png" width="240"> |
+| <img src="docs/screenshots/landing-mobile.jpg" alt="Mobile landing" width="240"> | <img src="docs/screenshots/room-mobile-join.jpg" alt="Mobile join" width="240"> | <img src="docs/screenshots/call-mobile.jpg" alt="Mobile call" width="240"> |
 
 Screenshots are captured from a real peer-to-peer call between two headless Chromium instances with fake cameras. Regenerate them with:
 
@@ -30,13 +42,19 @@ npm run build && npm start
 npm run screenshots
 ```
 
+To swap Chromium's default test pattern for your own footage, pass a `.y4m` file per peer (e.g. made with `ffmpeg -i clip.mp4 -pix_fmt yuv420p host.y4m`):
+
+```bash
+node scripts/screenshots.mjs http://localhost:3000 host.y4m guest.y4m
+```
+
 ## What's inside
 
 - **Landing page** (`app/page.tsx`) — fully functional hero with a working "create room / join with code" widget, feature grid, how-it-works, and privacy section.
 - **Video call client** (`components/room-client.tsx`) — responsive call stage. Desktop shows chat as a side panel; mobile uses a picture-in-picture self-view and a full-screen chat sheet.
 - **Interactive UI** — floating navbar with active-section pill, 3D-tilt live call preview, spotlight bento cards, auto-playing how-it-works stepper, segmented room-code input (accepts pasted links).
 - **In-call UX** — draggable picture-in-picture (double-click to swap), speaking indicators from live audio levels, emoji reactions over the data channel, call timer, auto-hiding controls, full screen, and keyboard shortcuts (`M` mute · `V` camera · `C` chat · `F` full screen · `1–6` react).
-- **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, mute/camera toggles, and a `RTCDataChannel` text chat. No backend required.
+- **WebRTC core** (`hooks/use-webrtc.ts`) — peer connection, camera/mic, camera switching, screen sharing, reconnection, network stats, and a `RTCDataChannel` for chat, reactions and mic/camera state. The only server piece is the small handshake relay described below; media and chat never pass through it.
 
 ## Run it
 
