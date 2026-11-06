@@ -10,16 +10,16 @@ const grotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Halcyon — Calm, private video calls",
   description:
-    "Peer-to-peer video calls that never touch a server. Open a room, share a link, talk. Works on web and mobile.",
+    "Peer-to-peer video calls: your video and chat never touch a server. Open a room, share a link, talk. Works on web and mobile.",
 };
 
 export const viewport: Viewport = {
   themeColor: "#0d0f1a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
