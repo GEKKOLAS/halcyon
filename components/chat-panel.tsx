@@ -132,7 +132,11 @@ export function ChatPanel({ messages, onSend, onClose, disabled }: ChatPanelProp
             ref={inputRef}
             value={val}
             onChange={(e) => setVal(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              // Don't send while an IME is still composing (e.g. Japanese, Chinese).
+              if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
+            }}
             placeholder={disabled ? "Connect to chat…" : "Message…"}
             disabled={disabled}
             className="h-9 flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"

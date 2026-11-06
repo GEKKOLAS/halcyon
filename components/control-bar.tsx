@@ -12,6 +12,9 @@ import {
   SmilePlus,
   Maximize,
   Minimize,
+  SwitchCamera,
+  ScreenShare,
+  ScreenShareOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -43,13 +46,12 @@ interface ControlBarProps {
   sharing?: boolean;
 }
 
-type Tone = "neutral" | "off" | "on" | "danger";
-
 function CtrlButton({
   tone = "neutral",
   onClick,
   label,
   shortcut,
+  pressed,
   children,
   className,
 }: {
@@ -57,6 +59,7 @@ function CtrlButton({
   onClick: () => void;
   label: string;
   shortcut?: string;
+  pressed?: boolean;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -68,8 +71,9 @@ function CtrlButton({
           whileTap={{ scale: 0.9 }}
           onClick={onClick}
           aria-label={label}
+          aria-pressed={pressed}
           className={cn(
-            "relative grid h-12 w-12 place-items-center rounded-2xl transition-colors sm:h-14 sm:w-14",
+            "relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl transition-colors sm:h-14 sm:w-14",
             tone === "danger" &&
               "w-16 bg-destructive text-destructive-foreground hover:brightness-110 sm:w-20",
             tone === "off" && "bg-destructive/15 text-destructive ring-1 ring-destructive/40 hover:bg-destructive/25",
@@ -142,7 +146,11 @@ export function ControlBar({
           )}
         </AnimatePresence>
 
-        <div className="flex items-center gap-2 rounded-[1.75rem] glass-strong p-2 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] sm:gap-2.5">
+        <div
+          role="toolbar"
+          aria-label="Call controls"
+          className="flex items-center gap-1.5 rounded-[1.75rem] glass-strong p-2 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] sm:gap-2.5"
+        >
           <CtrlButton
             tone={micOn ? "neutral" : "off"}
             onClick={onToggleMic}
@@ -159,6 +167,24 @@ export function ControlBar({
           >
             {camOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
           </CtrlButton>
+
+          {onSwitchCamera && (
+            <CtrlButton onClick={onSwitchCamera} label="Switch camera">
+              <SwitchCamera className="h-5 w-5" />
+            </CtrlButton>
+          )}
+
+          {onToggleScreen && (
+            <CtrlButton
+              tone={sharing ? "active" : "neutral"}
+              onClick={onToggleScreen}
+              label={sharing ? "Stop sharing screen" : "Share screen"}
+              pressed={sharing}
+              className="hidden md:grid"
+            >
+              {sharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
+            </CtrlButton>
+          )}
 
           {canReact && (
             <CtrlButton
@@ -186,6 +212,7 @@ export function ControlBar({
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
+                  aria-label={`${unread} unread`}
                   className="pointer-events-none absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-aurora-rose px-1 text-[10px] font-bold text-white"
                 >
                   {unread}

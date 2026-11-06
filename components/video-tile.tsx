@@ -39,8 +39,9 @@ export function VideoTile({
   // The <video> element stays mounted for the tile's lifetime, so the stream
   // only needs to be attached when it changes (not when the camera toggles).
   useEffect(() => {
-    if (ref.current && stream) ref.current.srcObject = stream;
-  }, [stream, videoOff]);
+    const el = ref.current;
+    if (el && el.srcObject !== stream) el.srcObject = stream;
+  }, [stream]);
 
   const showVideo = !!stream && !videoOff;
 
@@ -52,16 +53,22 @@ export function VideoTile({
         className
       )}
     >
-      {stream && !videoOff ? (
-        <video
-          ref={ref}
-          autoPlay
-          playsInline
-          muted={muted}
-          className={cn("h-full w-full object-cover", mirror && "-scale-x-100")}
-        />
-      ) : (
-        <div className="grid h-full w-full place-items-center bg-gradient-to-br from-[#121a2e] to-[#1b1534]">
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted={muted}
+        aria-hidden={!showVideo}
+        className={cn(
+          "h-full w-full",
+          fit === "contain" ? "object-contain" : "object-cover",
+          mirror && "-scale-x-100",
+          !showVideo && "invisible"
+        )}
+      />
+
+      {!showVideo && (
+        <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-[#121a2e] to-[#1b1534]">
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <div className="relative">
               <motion.span
@@ -80,12 +87,14 @@ export function VideoTile({
             </div>
             {videoOff && !compact && (
               <span className="flex items-center gap-1.5 text-xs">
-                <VideoOff className="h-3.5 w-3.5" /> Camera off
+                <VideoOff className="h-3.5 w-3.5" role="img" aria-label="Camera off" /> Camera off
               </span>
             )}
           </div>
         </div>
       )}
+
+      {children}
 
       <div
         className={cn(
@@ -94,7 +103,7 @@ export function VideoTile({
         )}
       >
         {audioOff ? (
-          <MicOff className="h-3.5 w-3.5 text-destructive" />
+          <MicOff className="h-3.5 w-3.5 text-destructive" role="img" aria-label="Muted" />
         ) : (
           <span className="flex h-3 items-end gap-[2px]">
             {[0.6, 1, 0.75].map((m, i) => (
